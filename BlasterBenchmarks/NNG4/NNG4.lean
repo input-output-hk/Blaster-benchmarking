@@ -2,6 +2,7 @@
 namespace BlasterBenchmarks.NNG4
 abbrev ℕ := Nat
 
+set_option warn.sorry false
 section Addition
 open Nat
   theorem zero_add : ∀ (n : ℕ), 0 + n = n := by sorry
