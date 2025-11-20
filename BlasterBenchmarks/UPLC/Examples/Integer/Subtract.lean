@@ -11,9 +11,6 @@ open PlutusCore.Integer (Integer)
 open UPLC.CekMachine
 open UPLC.Uplc
 
-set_option auto.smt.trust true
-set_option auto.smt true
-set_option auto.smt.save true in
 /-! # Test cases with Valid result expected -/
 
 def subtractInteger: Program :=
@@ -32,16 +29,15 @@ def executeSubtract (x : Integer) (y : Integer) : Option Integer :=
 
 /-! # Properties of Subtract Integer -/
 theorem subtractInteger_spec1 :
-  ∀ (x y r : Integer), x < y → executeSubtract x y = some r → r < 0 := by auto
+  ∀ (x y r : Integer), x < y → executeSubtract x y = some r → r < 0 := by sorry
 theorem subtractInteger_spec2 :
-  ∀ (x y r : Integer), x ≥ y → executeSubtract x y = some r → r ≥ 0 := by auto
+  ∀ (x y r : Integer), x ≥ y → executeSubtract x y = some r → r ≥ 0 := by sorry
 theorem subtractInteger_spec3 :
-  ∀ (x y r : Integer), x = y → executeSubtract x y = some r → r = 0 := by auto
+  ∀ (x y r : Integer), x = y → executeSubtract x y = some r → r = 0 := by
+      sorry
 theorem subtractInteger_spec4 :
   ∀ (x y z r : Integer), x = z + y → executeSubtract x y = some r → r = z := by
-    set_option auto.smt.save true in
-    set_option trace.auto.smt.printCommands true in
-    auto
+    sorry
 
 def absInteger : Program :=
   (Program.Program (Version.Version 1 1 0)

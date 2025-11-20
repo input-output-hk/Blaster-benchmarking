@@ -7,9 +7,6 @@ import BlasterBenchmarks.UPLC.Uplc
 import Solver.Command.Tactic
 import Auto
 
-set_option auto.smt.trust true
-set_option auto.smt true
-set_option auto.smt.save true in
 namespace Tests.Uplc.Fibonacci
 open PlutusCore.Integer (Integer)
 open UPLC.CekMachine
@@ -63,8 +60,6 @@ def executeFibonacci (p : Program) (x : Integer) : Option Int :=
   executeIntProgram p [integerToBuiltin x] 2000
 
 def integerToParams (x : Integer) : List Term := [integerToBuiltin x]
-#prep_uplc "compiledSeungheonOhSize" fibonacciSeungheonOhSize [Integer] integerToParams 2000
-#prep_uplc "compiledNaiveRecursion" fibonacciNaiveRecursion [Integer] integerToParams 2500
 
 -- Fibonacci 0 = 0
 theorem fibonacci0_is_0 :
@@ -92,27 +87,23 @@ theorem fibonacci7_is_13 :
   executeFibonacci fibonacciSeungheonOhSize 7 = some 13 := by sorry
 -- Fibonacci 8 = 21
 theorem fibonacci8_is_none :
-  executeFibonacci fibonacciSeungheonOhSize 8 = none := by blaster
+  executeFibonacci fibonacciSeungheonOhSize 8 = none := by sorry
 -- Fibonacci 10 = 55
 -- ∀ (n : Integer), n > 1 → Fibonacci n = Fibonacci (n - 1) + Fibonacci (n - 2)
 theorem fibonacci_recursion :
   ∀ (n r1 r2 r3 : Integer), n > 1 →
-    (fromFrameToInt $ prop_compiledSeungheonOhSize n) = some r1 →
-    (fromFrameToInt $ prop_compiledSeungheonOhSize (n - 1)) = some r2 →
-    (fromFrameToInt $ prop_compiledSeungheonOhSize (n - 2)) = some r3 →
+    (executeFibonacci fibonacciSeungheonOhSize n) = some r1 →
+    (executeFibonacci fibonacciSeungheonOhSize (n - 1)) = some r2 →
+    (executeFibonacci fibonacciSeungheonOhSize (n - 2)) = some r3 →
     r1 = r2 + r3 := by
-      set_option auto.smt.trust true in
-      set_option auto.smt true in
-      auto
+    sorry
 
 -- Equivalence between two implementations
 theorem fibonacci_equiv :
   ∀ (n r1 r2 : Integer),
-    (fromFrameToInt $ prop_compiledNaiveRecursion n) = some r1 →
-    (fromFrameToInt $ prop_compiledSeungheonOhSize n) = some r2 →
+    (executeFibonacci  fibonacciNaiveRecursion n) = some r1 →
+    (executeFibonacci  fibonacciSeungheonOhSize n) = some r2 →
     r1 = r2 := by
-      set_option auto.smt.trust true in
-      set_option auto.smt true in
-      auto
+      sorry
 
 end Tests.Uplc.Fibonacci
