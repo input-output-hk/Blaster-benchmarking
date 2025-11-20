@@ -17,5 +17,9 @@ require Hammer from git "https://github.com/JOSHCLUNE/LeanHammer.git" @ "v4.24.0
 def leanVersion : String := s!"v{Lean.versionString}"
 require "leanprover-community" / mathlib @ git leanVersion
 
+
+lean_lib PlutusCore where
+lean_lib UPLC where
+
 @[default_target]
 lean_lib BlasterBenchmarks where

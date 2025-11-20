@@ -3,19 +3,19 @@
 
 # Logging functions
 log_verbose() {
-    [[ $VERBOSE -eq 1 ]] && echo -e "${CYAN}[VERBOSE]${NC} $*">&2
+    [[ $VERBOSE -eq 1 ]] && echo -e "${CYAN}[VERBOSE]${NC} $*" >&2
 }
 
 log_info() {
-    [[ $QUIET -eq 0 ]] && echo -e "${BLUE}[INFO]${NC} $*">&2
+    [[ $QUIET -eq 0 ]] && echo -e "${BLUE}[INFO]${NC} $*"
 }
 
 log_success() {
-    [[ $QUIET -eq 0 ]] && echo -e "${GREEN}[SUCCESS]${NC} $*">&2
+    [[ $QUIET -eq 0 ]] && echo -e "${GREEN}[SUCCESS]${NC} $*"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $*"
+    echo -e "${YELLOW}[WARNING]${NC} $*" >&2
 }
 
 log_error() {
@@ -70,42 +70,24 @@ get_file_hash() {
 # Args: cache_key
 check_cache() {
     [[ $ENABLE_CACHE -eq 0 ]] && return 1
-
+    
     local cache_key="$1"
     local cache_file="${CACHE_DIR}/${cache_key}"
-
+    
     [[ -f "$cache_file" ]] && cat "$cache_file" && return 0
     return 1
 }
 
-# Store result in cache with file locking for thread safety
+# Store result in cache
 # Args: cache_key result
 store_cache() {
     [[ $ENABLE_CACHE -eq 0 ]] && return
-
+    
     local cache_key="$1"
     local result="$2"
-    local cache_file="${CACHE_DIR}/${cache_key}"
-    local lock_file="${CACHE_DIR}/.lock_${cache_key}"
-
+    
     mkdir -p "$CACHE_DIR"
-
-    # Use flock for atomic write with locking (if available)
-    if command -v flock &> /dev/null; then
-        {
-            flock -x 200
-            # Double-check: another process might have written while waiting for lock
-            if [[ ! -f "$cache_file" ]]; then
-                echo "$result" > "$cache_file.tmp.$$"
-                mv "$cache_file.tmp.$$" "$cache_file"
-            fi
-        } 200>"$lock_file"
-        rm -f "$lock_file"
-    else
-        # Fallback: atomic write with temp file (less safe but better than direct write)
-        echo "$result" > "$cache_file.tmp.$$"
-        mv "$cache_file.tmp.$$" "$cache_file"
-    fi
+    echo "$result" > "${CACHE_DIR}/${cache_key}"
 }
 
 # Generate cache key
@@ -115,7 +97,7 @@ generate_cache_key() {
     echo "$key" | sed 's/[^a-zA-Z0-9_-]/_/g'
 }
 
-# Extract context (imports, abbrevs, opens) from Lean file
+# Extract context (imports, abbrevs, opens, namespace) from Lean file
 # Args: file_path
 extract_context() {
     local file="$1"
@@ -123,7 +105,22 @@ extract_context() {
     
     while IFS= read -r line; do
         [[ $line =~ ^[[:space:]]*theorem[[:space:]]+ ]] && break
-        [[ $line =~ ^[[:space:]]*(import|abbrev|open)[[:space:]]+ ]] && \
+        [[ $line =~ ^[[:space:]]*(import|abbrev|open|namespace)[[:space:]]+ ]] && \
+            context="$context$line"$'\n'
+    done < "$file"
+    
+    echo "$context"
+}
+
+# Extract just the namespace and open statements (for when importing the full file)
+# Args: file_path
+extract_namespace_opens() {
+    local file="$1"
+    local context=""
+    
+    while IFS= read -r line; do
+        [[ $line =~ ^[[:space:]]*theorem[[:space:]]+ ]] && break
+        [[ $line =~ ^[[:space:]]*(open|namespace)[[:space:]]+ ]] && \
             context="$context$line"$'\n'
     done < "$file"
     
@@ -173,7 +170,7 @@ list_benchmarks() {
     for spec in "${BENCHMARK_FILES[@]}"; do
         IFS=':' read -r import_path file_path display_name timeout <<< "$spec"
         if [[ -f "$file_path" ]]; then
-            local theorem_count=$(get_all_theorems "$file_path" | grep -c '^' || echo 0)
+            local theorem_count=$(get_all_theorems "$file_path" | wc -l)
             echo -e "  ${GREEN}✓${NC} $display_name (${theorem_count} theorems, timeout: ${timeout}s)"
             log_verbose "    File: $file_path"
             log_verbose "    Import: $import_path"
