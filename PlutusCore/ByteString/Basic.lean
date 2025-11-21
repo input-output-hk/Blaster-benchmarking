@@ -197,4 +197,3 @@ export PlutusCore.ByteStringInternal
   )
 
 end PlutusCore.ByteString
-

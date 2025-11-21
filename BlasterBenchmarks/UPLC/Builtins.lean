@@ -42,7 +42,7 @@ def expectedArgs (b : BuiltinFun) : ExpectedBuiltinArgs :=
   | ModInteger                      => ArgV ⊙ One ArgV
   | QuotientInteger                 => ArgV ⊙ One ArgV
   | RemainderInteger                => ArgV ⊙ One ArgV
-  | EqualsInteger                   => ArgV ⊙ One ArgV -- added missing entry
+  | EqualsInteger                   => ArgV ⊙ One ArgV
   | LessThanInteger                 => ArgV ⊙ One ArgV
   | LessThanEqualsInteger           => ArgV ⊙ One ArgV
   -- ByteString

@@ -7,7 +7,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-benchmark_results}"
 CACHE_DIR="${CACHE_DIR:-${TEMP_DIR}/cache}"
 
 # Execution settings
-TIMEOUT="${TIMEOUT:-1000}"
+TIMEOUT="${TIMEOUT:-20}"
 PARALLEL_JOBS="${PARALLEL_JOBS:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 
@@ -19,12 +19,12 @@ QUIET="${QUIET:-0}"
 # Format: import_path:file_path:display_name:timeout_override
 # Paths are relative to the project root (parent of benchmarks/ directory)
 BENCHMARK_FILES=(
-    # "BlasterBenchmarks.NNG4.NNG4:BlasterBenchmarks/NNG4/NNG4.lean:NNG4:20"
+    "BlasterBenchmarks.NNG4.NNG4:BlasterBenchmarks/NNG4/NNG4.lean:NNG4:20"
     # "BlasterBenchmarks.STG4.STG4:BlasterBenchmarks/STG4/STG4.lean:STG4:20"
     # "BlasterBenchmarks.ITL4.ITLS:BlasterBenchmarks/ITL4/ITL4.lean:ITL4:20"
     # "BlasterBenchmarks.UPLC.Examples.Integer.Add:BlasterBenchmarks/UPLC/Examples/Integer/Add.lean:UPLC.AddInteger:20"
     # "BlasterBenchmarks.UPLC.Examples.Integer.Fibonacci:BlasterBenchmarks/UPLC/Examples/Integer/Fibonacci.lean:UPLC.Fibonacci:20"
-    "BlasterBenchmarks.UPLC.Examples.Integer.Saturate:BlasterBenchmarks/UPLC/Examples/Integer/Saturate.lean:UPLC.Saturate:1000"
+    # "BlasterBenchmarks.UPLC.Examples.Integer.Saturate:BlasterBenchmarks/UPLC/Examples/Integer/Saturate.lean:UPLC.Saturate:1000"
     # "BlasterBenchmarks.UPLC.Examples.Integer.Subtract:BlasterBenchmarks/UPLC/Examples/Integer/Subtract.lean:UPLC.Subtract:20"
     # "BlasterBenchmarks.UPLC.Examples.List.Case:BlasterBenchmarks/UPLC/Examples/List/Case.lean:UPLC.ListCase:20"
 )   

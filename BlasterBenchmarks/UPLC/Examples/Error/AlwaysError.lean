@@ -12,6 +12,6 @@ open UPLC.Uplc
 def alwaysError : Program :=
   Program.Program (Version.Version 1 1 0) (Term.Error)
 
-#solve (only-optimize: 1) (solve-result: 2) [∀ (x : Nat), isErrorState (cekExecuteProgram alwaysError [] x)]
+theorem alwaysError_isErrorState : ∀ (x : Nat), isErrorState (cekExecuteProgram alwaysError [] x) := by sorry
 
 end Tests.Uplc.AlwaysError

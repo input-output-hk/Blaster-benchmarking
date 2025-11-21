@@ -218,7 +218,7 @@ cleanup() {
         rm -rf "$TEMP_DIR"
     fi
 }
-# trap cleanup EXIT
+trap cleanup EXIT
 
 # Run main
 main "$@"

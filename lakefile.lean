@@ -5,7 +5,7 @@ package BlasterBenchmarks where
 
 -- Solvers
 require «Solver» from git
-  "https://github.com/input-output-hk/Lean-blaster" @ "main"
+  "https://github.com/input-output-hk/Lean-blaster" @ "feat-pow-optim"
 
 -- Tactics
 require smt from git "https://github.com/ufmg-smite/lean-smt.git" @ "main"
