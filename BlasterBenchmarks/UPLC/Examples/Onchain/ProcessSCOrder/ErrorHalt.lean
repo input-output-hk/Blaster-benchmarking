@@ -2,7 +2,6 @@ import BlasterBenchmarks.UPLC.Builtins
 import BlasterBenchmarks.UPLC.CekValue
 import BlasterBenchmarks.UPLC.Examples.Utils
 import BlasterBenchmarks.UPLC.Examples.Onchain.ProcessSCOrder.ProcessSCOrder
-import BlasterBenchmarks.UPLC.PreProcess
 import BlasterBenchmarks.UPLC.Uplc
 import Solver.Command.Tactic
 
@@ -16,18 +15,14 @@ set_option warn.sorry false
 theorem isErrorState_imp_supply_exceeded :
   ∀ (x : ProcessSCInput),
     validOrderInput x →
-    isErrorState (prop_compiledProcessSCOrder x) →
-    -x.nbTokens > x.state.crN_SC := by blaster
-
-#solve [ isErrorState_imp_supply_exceeded ]
+    isErrorState (appliedProcessSCOrder x) →
+    -x.nbTokens > x.state.crN_SC := by sorry
 
 -- Function either triggers a error or terminates within the provided budget
 theorem sufficient_script_budget :
   ∀ (x : ProcessSCInput),
-    let res := prop_compiledProcessSCOrder x
     validOrderInput x →
-    isErrorState res ∨ isHaltState res := by blaster
-
-#solve [ sufficient_script_budget ]
+      isErrorState (appliedProcessSCOrder x) ∨
+      isHaltState (appliedProcessSCOrder x) := by sorry
 
 end Tests.Uplc.Onchain.ProcessSCOrder

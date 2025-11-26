@@ -2,7 +2,6 @@ import PlutusCore.Integer
 import BlasterBenchmarks.UPLC.Builtins
 import BlasterBenchmarks.UPLC.CekValue
 import BlasterBenchmarks.UPLC.Examples.Utils
-import BlasterBenchmarks.UPLC.PreProcess
 import BlasterBenchmarks.UPLC.Uplc
 import Solver.Command.Tactic
 import Auto
@@ -61,49 +60,53 @@ def executeFibonacci (p : Program) (x : Integer) : Option Int :=
 
 def integerToParams (x : Integer) : List Term := [integerToBuiltin x]
 
+set_option warn.sorry false
+
 -- Fibonacci 0 = 0
 theorem fibonacci0_is_0 :
   executeFibonacci fibonacciSeungheonOhSize 0 = some 0 := by sorry
+
 -- Fibonacci 1 = 1
 theorem fibonacci1_is_1 :
   executeFibonacci fibonacciSeungheonOhSize 1 = some 1 := by sorry
+
 -- Fibonacci 2 = 1
 theorem fibonacci2_is_1:
   executeFibonacci fibonacciSeungheonOhSize 2 = some 1 := by sorry
+
 -- Fibonacci 3 = 2
 theorem fibonacci3_is_2 :
   executeFibonacci fibonacciSeungheonOhSize 3 = some 2 := by sorry
+
 -- Fibonacci 4 = 3
 theorem fibonacci4_is_3 :
   executeFibonacci fibonacciSeungheonOhSize 4 = some 3 := by sorry
+
 -- Fibonacci 5 = 5
 theorem fibonacci5_is_5 :
   executeFibonacci fibonacciSeungheonOhSize 5 = some 5 := by sorry
+
 -- Fibonacci 6 = 8
 theorem fibonacci6_is_8 :
   executeFibonacci fibonacciSeungheonOhSize 6 = some 8 := by sorry
+
 -- Fibonacci 7 = 13
 theorem fibonacci7_is_13 :
   executeFibonacci fibonacciSeungheonOhSize 7 = some 13 := by sorry
--- Fibonacci 8 = 21
-theorem fibonacci8_is_none :
-  executeFibonacci fibonacciSeungheonOhSize 8 = none := by sorry
--- Fibonacci 10 = 55
+
 -- ∀ (n : Integer), n > 1 → Fibonacci n = Fibonacci (n - 1) + Fibonacci (n - 2)
 theorem fibonacci_recursion :
   ∀ (n r1 r2 r3 : Integer), n > 1 →
     (executeFibonacci fibonacciSeungheonOhSize n) = some r1 →
     (executeFibonacci fibonacciSeungheonOhSize (n - 1)) = some r2 →
     (executeFibonacci fibonacciSeungheonOhSize (n - 2)) = some r3 →
-    r1 = r2 + r3 := by
-    sorry
+    r1 = r2 + r3 := by sorry
 
 -- Equivalence between two implementations
 theorem fibonacci_equiv :
   ∀ (n r1 r2 : Integer),
     (executeFibonacci  fibonacciNaiveRecursion n) = some r1 →
     (executeFibonacci  fibonacciSeungheonOhSize n) = some r2 →
-    r1 = r2 := by
-      sorry
+    r1 = r2 := by sorry
 
 end Tests.Uplc.Fibonacci

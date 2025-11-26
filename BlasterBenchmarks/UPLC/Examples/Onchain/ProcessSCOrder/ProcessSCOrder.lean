@@ -2,7 +2,6 @@ import BlasterBenchmarks.UPLC.Builtins
 import BlasterBenchmarks.UPLC.CekValue
 import BlasterBenchmarks.UPLC.Examples.Utils
 import BlasterBenchmarks.UPLC.Examples.Onchain.ProcessSCOrder.OrderPredicates
-import BlasterBenchmarks.UPLC.PreProcess
 import BlasterBenchmarks.UPLC.Uplc
 import Solver.Command.Tactic
 
@@ -824,6 +823,6 @@ def processSCOrder : UPLC.Uplc.Program :=
                     ]))))))))))
 
 
-#prep_uplc "compiledProcessSCOrder" processSCOrder [ProcessSCInput] orderInputToParams 5000
+def appliedProcessSCOrder (x : ProcessSCInput) := cekExecuteProgram processSCOrder (orderInputToParams x) 5000
 
 end Tests.Uplc.Onchain.ProcessSCOrder

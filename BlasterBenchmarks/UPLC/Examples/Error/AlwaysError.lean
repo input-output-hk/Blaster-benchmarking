@@ -12,6 +12,7 @@ open UPLC.Uplc
 def alwaysError : Program :=
   Program.Program (Version.Version 1 1 0) (Term.Error)
 
+set_option warn.sorry false
 theorem alwaysError_isErrorState : ∀ (x : Nat), isErrorState (cekExecuteProgram alwaysError [] x) := by sorry
 
 end Tests.Uplc.AlwaysError

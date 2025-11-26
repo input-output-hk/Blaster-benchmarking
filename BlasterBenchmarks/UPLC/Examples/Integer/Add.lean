@@ -15,6 +15,7 @@ open UPLC.Uplc
 
 /-! # Test cases with Valid result expected -/
 
+set_option warn.sorry false
 def addInteger: Program :=
     Program.Program (Version.Version 1 1 0)
     (Term.Lam "x"

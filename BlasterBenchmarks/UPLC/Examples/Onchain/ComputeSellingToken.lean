@@ -3,9 +3,8 @@ import BlasterBenchmarks.UPLC.Builtins
 import BlasterBenchmarks.UPLC.CekValue
 import BlasterBenchmarks.UPLC.Examples.Utils
 import BlasterBenchmarks.UPLC.Examples.Onchain.Ratio
-import BlasterBenchmarks.UPLC.PreProcess
 import BlasterBenchmarks.UPLC.Uplc
-import Solver.Command.Syntax
+import Solver.Command.Tactic
 
 namespace Tests.Uplc.Onchain.ComputeSellingToken
 open PlutusCore.Integer (Integer)
@@ -426,28 +425,11 @@ def funArgsV2 (x : ComputeInput) : List Term :=
       integerToBuiltin x.minOpFees, ratioToData x.opFeeRatio
     ]
 
-#prep_uplc "compiledV1" computeSellingTokenV1 [ComputeInput] funArgsV1 20000
-noncomputable def compiledComputeSellingTokenV1 (x : ComputeInput) := fromFrameToInt $ prop_compiledV1 x
+def appliedComputeSellingTokenV1 (x : ComputeInput) :=
+    fromFrameToInt $ cekExecuteProgram computeSellingTokenV1 (funArgsV1 x) 20000
 
-#prep_uplc "compiledV2" computeSellingTokenV2 [ComputeInput] funArgsV2 20000
-noncomputable def compiledComputeSellingTokenV2 (x : ComputeInput) := fromFrameToInt $ prop_compiledV2 x
-
-def testInput : ComputeInput :=
-  { providedTotalFees := 1000,
-    providedSellFees := {numerator := 1000, denominator := 1},
-    price := {numerator := 2433, denominator := 123}
-    nbTokens := -220,
-    expectedFees := 1306,
-    minOpFees := 100,
-    opFeeRatio := {numerator := 3, denominator := 10} }
-
-/-- info: some (-168) -/
-#guard_msgs in
-#eval fromFrameToInt $ exec_compiledV1 testInput
-
-/-- info: some (-168) -/
-#guard_msgs in
-#eval fromFrameToInt $ exec_compiledV2 testInput
+def appliedComputeSellingTokenV2 (x : ComputeInput) :=
+    fromFrameToInt $ cekExecuteProgram computeSellingTokenV2 (funArgsV2  x) 20000
 
 def validInput (x : ComputeInput) : Prop :=
   validRatio x.providedSellFees ∧
@@ -462,77 +444,62 @@ def validInput (x : ComputeInput) : Prop :=
   x.opFeeRatio ≤ oneRatio ∧
   x.expectedFees = ceil (fromInteger (truncate (fromInteger (-x.nbTokens) * x.price)) * x.opFeeRatio)
 
+set_option warn.sorry false
+
 -- Adjusted selling token always ≤ 0.
-#solve [∀ (x : ComputeInput) (res : Integer),
-        validInput x →
-        compiledComputeSellingTokenV1 x = some res →
-        res ≤ 0 ]
+theorem selling_token_leq_zero :
+  ∀ (x : ComputeInput) (res : Integer),
+      validInput x → appliedComputeSellingTokenV1 x = some res → res ≤ 0 := by sorry
 
 -- Selling token not adjusted when sufficient operator's fees provided
-#solve [∀ (x : ComputeInput),
-        validInput x →
-        x.providedTotalFees ≥ x.expectedFees →
-        compiledComputeSellingTokenV1 x = some x.nbTokens ]
+theorem sufficient_operator_fees :
+  ∀ (x : ComputeInput),
+    validInput x → x.providedTotalFees ≥ x.expectedFees →
+    appliedComputeSellingTokenV1 x = some x.nbTokens := by sorry
 
 -- Tokens can't be sold (i.e., result set to zero) when operator's fees
 -- provided is less than min operator's fees.
-#solve [∀ (x : ComputeInput),
-        validInput x →
-        x.providedTotalFees < x.expectedFees →
-        x.providedSellFees < fromInteger x.minOpFees  →
-        compiledComputeSellingTokenV1 x = some 0 ]
+theorem operators_fees_lt_min_fees :
+    ∀ (x : ComputeInput),
+      validInput x → x.providedTotalFees < x.expectedFees →
+      x.providedSellFees < fromInteger x.minOpFees →
+      appliedComputeSellingTokenV1 x = some 0 := by sorry
 
 -- All tokens can be sold when the current selling price is zero
 -- (i.e., after deducting selling fees).
-#solve [∀ (x : ComputeInput),
-        validInput x →
-        x.price ≤ zeroRatio →
-        compiledComputeSellingTokenV1 x = some x.nbTokens ]
+theorem selling_price_zero :
+    ∀ (x : ComputeInput),
+      validInput x → x.price ≤ zeroRatio →
+      appliedComputeSellingTokenV1 x = some x.nbTokens := by sorry
 
 -- Selling tokens properly adjuted when the provided operator's fees
 -- is less than the expected fees but still greater than or equal to min operator's fees.
-#solve [ ∀ (x : ComputeInput),
-         let res := truncate $ x.providedSellFees * (recip $ x.price * x.opFeeRatio)
-         validInput x →
-         x.providedTotalFees < x.expectedFees →
-         fromInteger x.minOpFees ≤ x.providedSellFees →
-         zeroRatio < x.price →
-         compiledComputeSellingTokenV1 x = some (-res) ]
+theorem selling_tokens_adjusted :
+     ∀ (x : ComputeInput),
+       let res := truncate $ x.providedSellFees * (recip $ x.price * x.opFeeRatio)
+       validInput x →
+       x.providedTotalFees < x.expectedFees →
+       fromInteger x.minOpFees ≤ x.providedSellFees →
+       zeroRatio < x.price →
+       appliedComputeSellingTokenV1 x = some (-res) := by sorry
 
 -- The adjusted number of selling tokens corresponds to the maximum number of
 -- tokens that can be sold according to the number of operator's fees provided.
-#solve [ ∀ (x : ComputeInput),
-         let res := truncate $ x.providedSellFees * (recip $ x.price * x.opFeeRatio)
-         validInput x →
-         x.providedTotalFees < x.expectedFees →
-         fromInteger x.minOpFees ≤ x.providedSellFees →
-         zeroRatio < x.price →
-         compiledComputeSellingTokenV1 x = some (-res) →
-         x.providedSellFees < (fromInteger (res + 1) * x.price * x.opFeeRatio)
-       ]
+theorem adjusted_tokens_eq_max_possible_tokens :
+     ∀ (x : ComputeInput),
+       let res := truncate $ x.providedSellFees * (recip $ x.price * x.opFeeRatio)
+       validInput x →
+       x.providedTotalFees < x.expectedFees →
+       fromInteger x.minOpFees ≤ x.providedSellFees →
+       zeroRatio < x.price →
+       appliedComputeSellingTokenV1 x = some (-res) →
+       x.providedSellFees < (fromInteger (res + 1) * x.price * x.opFeeRatio) := by sorry
 
 -- Equivalence PlutusTx and Plutarch
-#solve (gen-cex: 0) (solve-result: 1)
-  [ ∀ (x : ComputeInput),
-      validInput x →
-      compiledComputeSellingTokenV1 x = compiledComputeSellingTokenV2 x
-  ]
-
-def testCex : ComputeInput :=
-  { providedTotalFees := 3,
-    providedSellFees := {numerator := 2, denominator := 1},
-    price := {numerator := 1, denominator := 4}
-    nbTokens := -63,
-    expectedFees := 5,
-    minOpFees := 1,
-    opFeeRatio := {numerator := 2, denominator := 7} }
-
-/-- info: some (-28) -/
-#guard_msgs in
-#eval fromFrameToInt $ exec_compiledV1 testCex
-
-/-- info: some (-42) -/
-#guard_msgs in
-#eval fromFrameToInt $ exec_compiledV2 testCex
+-- Counterexample expected
+theorem equivalence_V1_V2 :
+   ∀ (x : ComputeInput),
+     validInput x →
+     appliedComputeSellingTokenV1 x = appliedComputeSellingTokenV2 x := by sorry
 
 end Tests.Uplc.Onchain.ComputeSellingToken
