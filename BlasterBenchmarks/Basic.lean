@@ -4,3 +4,4 @@ import BlasterBenchmarks.ITL4.ITL4
 import BlasterBenchmarks.UPLC.Examples.Error
 import BlasterBenchmarks.UPLC.Examples.Integer
 import BlasterBenchmarks.UPLC.Examples.Onchain
+import BlasterBenchmarks.CEX.CEX

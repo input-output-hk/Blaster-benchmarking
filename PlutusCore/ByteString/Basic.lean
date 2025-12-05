@@ -165,7 +165,7 @@ def indexByteString (bs : ByteString) (j : Integer) : Except String Integer :=
     | some c => pure c.toNat
 
 
-def equalsByteString (b1 : ByteString) (b2 : ByteString) : Bool := BEqByteString.beq b1 b2
+def equalsByteString (b1 : ByteString) (b2 : ByteString) : Bool := b1 == b2
 def lessThanByteString (b1 : ByteString) (b2 : ByteString) : Bool := b1 < b2
 def lessThanEqualsByteString (b1 : ByteString) (b2 : ByteString) : Bool := b1 <= b2
 

@@ -35,4 +35,8 @@ def isHaltState : State -> Prop
  | .Halt _ => True
  | _ => False
 
+def isHaltUnitState : State → Prop
+ | .Halt (.VCon (Const.Unit)) => True
+ | _ => False
+
 end Tests.Uplc
