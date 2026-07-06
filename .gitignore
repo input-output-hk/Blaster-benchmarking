@@ -17,3 +17,4 @@ latest/projects/*/lake-manifest.json
 latest/results/
 .blaster-latest.conf
 benchmark_temp_blaster/
+latest/results/report.artifact.html

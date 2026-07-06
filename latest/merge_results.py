@@ -135,14 +135,24 @@ def col_label(tac: str, man: dict) -> str:
 
 
 def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
+    """Return a body-content fragment (style + markup), no document wrapper."""
+    tcs = sorted({man[t].get("toolchain", "").replace("leanprover/lean4:", "")
+                  for t in tactics if t in man} - {""})
+    span = f"{tcs[0]} – {tcs[-1]}" if len(tcs) > 1 else (tcs[0] if tcs else "")
     parts = []
-    parts.append(HEAD)
+    parts.append(STYLE)
     parts.append('<div class="wrap">')
-    parts.append('<h1>Fair latest-branch tactic benchmark</h1>')
-    parts.append('<p class="lede">Each tactic runs in its own isolated Lake project pinned to its '
-                 '<b>latest default branch</b> and that branch\'s Lean toolchain — tracked live, not '
-                 'pinned to a common version. Columns are labelled with the toolchain + resolved commit '
-                 'each tactic actually ran on.</p>')
+    parts.append('<header class="masthead">')
+    parts.append('<div class="eyebrow">Lean4 &middot; tactic benchmark</div>')
+    parts.append('<h1>Every tactic on its <span class="hl">own latest branch</span></h1>')
+    parts.append('<p class="lede">Each tactic runs in an isolated Lake project pinned to its '
+                 '<b>latest default branch</b> and that branch\'s own Lean toolchain — tracked live, not '
+                 'pinned to a shared version. Every column is labelled with the toolchain and resolved '
+                 'commit it actually ran on.</p>')
+    if span:
+        parts.append(f'<div class="spanline">toolchains span <b>{html.escape(span)}</b> '
+                     f'&middot; {len(tactics)} tactics &middot; 3 suites</div>')
+    parts.append('</header>')
 
     # version manifest
     parts.append('<h2>Versions run</h2>')
@@ -218,36 +228,59 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
                  'higher-order reasoning and lambdas. It accounts for several STG4 failures.</li>')
     parts.append('</ul>')
 
-    parts.append('</div></body></html>')
+    parts.append('</div>')
     return "\n".join(parts)
 
 
-HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fair latest-branch tactic benchmark</title>
-<style>
-:root{--bg:#0d0f14;--card:#151922;--bd:rgba(255,255,255,.08);--tx:#dde1ef;--dim:#8891a8}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);
- font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.wrap{max-width:1200px;margin:0 auto;padding:40px 24px 80px}
-h1{font-size:2rem;margin:0 0 8px}h2{margin:44px 0 12px;font-size:1.3rem}
-.lede{color:var(--dim);max-width:760px}.dim{color:var(--dim);font-weight:400;font-size:.9rem}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-table{border-collapse:collapse;width:100%;margin:8px 0;font-size:13px}
-th,td{padding:7px 12px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}
-th{color:var(--dim);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+# Utilitarian data report: cool ink ground, one restrained sky accent for structure,
+# and semantic status colours (green/amber/blue/red) carrying the data — kept separate
+# from the accent. Tabular figures so columns of numbers align.
+STYLE = """<style>
+:root{--bg:#0b0e14;--panel:#111621;--bd:rgba(148,163,199,.14);--tx:#e5e9f5;
+ --dim:#8b93ab;--acc:#7dd3fc;--ok:#4ade80;--to:#fbbf24;--env:#60a5fa;--fail:#f87171}
+*{box-sizing:border-box}
+.wrap{max-width:1180px;margin:0 auto;padding:8px 24px 96px;
+ font:15px/1.65 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--tx)}
+.masthead{padding:40px 0 28px;border-bottom:1px solid var(--bd);margin-bottom:8px}
+.eyebrow{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.72rem;
+ letter-spacing:.18em;text-transform:uppercase;color:var(--acc);margin-bottom:14px}
+h1{font-size:clamp(1.9rem,4vw,2.7rem);line-height:1.08;margin:0 0 14px;font-weight:700;
+ letter-spacing:-.015em;text-wrap:balance;max-width:16ch}
+h1 .hl{color:var(--acc)}
+h2{margin:48px 0 6px;font-size:1.25rem;font-weight:650;letter-spacing:-.01em}
+.lede{color:var(--dim);max-width:64ch;font-size:1.02rem}
+.spanline{margin-top:16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:.78rem;color:var(--dim)}.spanline b{color:var(--tx)}
+.dim{color:var(--dim);font-weight:400;font-size:.9rem}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+th,td{padding:8px 13px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}
+th{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+td{font-variant-numeric:tabular-nums}
 .manifest td,.summary td{white-space:nowrap}
-.bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.05)}
+.manifest,.summary{background:var(--panel);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.bar{display:flex;height:8px;border-radius:5px;overflow:hidden;background:rgba(148,163,199,.1)}
 .bar span{display:block}
-.scroll{overflow-x:auto;border:1px solid var(--bd);border-radius:8px}
-.matrix{margin:0;font-size:12px}.matrix th .tac{font-weight:700;color:var(--tx);text-transform:none;font-size:.8rem}
-.matrix th .ver{color:var(--dim);font-size:.66rem;font-weight:400;text-transform:none;letter-spacing:0}
-.matrix .thm{position:sticky;left:0;background:var(--bg);max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.scroll{overflow-x:auto;border:1px solid var(--bd);border-radius:10px}
+.matrix{margin:0;font-size:12px}
+.matrix th .tac{font-weight:700;color:var(--tx);text-transform:none;font-size:.8rem}
+.matrix th .ver{color:var(--dim);font-size:.66rem;font-weight:400;text-transform:none;
+ letter-spacing:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.matrix .thm{position:sticky;left:0;background:var(--bg);max-width:280px;overflow:hidden;
+ text-overflow:ellipsis;box-shadow:1px 0 0 var(--bd)}
 .cell{white-space:nowrap}
-.caveats{color:var(--dim);max-width:820px}.caveats li{margin:8px 0}
-code{background:rgba(255,255,255,.07);padding:1px 5px;border-radius:3px;font-size:.85em}
-tr:hover td{background:rgba(255,255,255,.02)}
-</style></head><body>"""
+.caveats{color:var(--dim);max-width:78ch}.caveats li{margin:9px 0}.caveats b{color:var(--tx)}
+code{background:rgba(148,163,199,.12);padding:1px 5px;border-radius:4px;font-size:.85em;
+ font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+tr:hover td{background:rgba(148,163,199,.05)}
+</style>"""
+
+
+def wrap_standalone(fragment: str) -> str:
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>Fair latest-branch tactic benchmark</title>'
+            f'<style>body{{margin:0;background:#0b0e14}}</style></head><body>{fragment}</body></html>')
 
 
 def main():
@@ -258,10 +291,14 @@ def main():
         print(f"No per-tool result CSVs found under {results}", file=sys.stderr)
         sys.exit(1)
     tactics = ordered_tactics(seen)
+    fragment = render_html(results, benches, tactics, man)
     out_html = results / "report.html"
-    out_html.write_text(render_html(results, benches, tactics, man), encoding="utf-8")
+    out_html.write_text(wrap_standalone(fragment), encoding="utf-8")
+    frag_html = results / "report.artifact.html"
+    frag_html.write_text(fragment, encoding="utf-8")
     print(f"Merged CSVs: {results/'merged'}")
     print(f"Report:      {out_html}")
+    print(f"Artifact:    {frag_html}")
     # brief console summary
     for bench in sorted(benches):
         thms = set()
