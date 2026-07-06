@@ -18,3 +18,7 @@ latest/results/
 .blaster-latest.conf
 benchmark_temp_blaster/
 latest/results/report.artifact.html
+latest/*.log
+latest/__pycache__/
+**/__pycache__/
+latest/projects/

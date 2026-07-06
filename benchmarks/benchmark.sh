@@ -40,6 +40,7 @@ Commands:
     json        Generate JSON output from existing results
     summary     Show summary statistics from existing results
     visualize   Generate visualization plots from existing results
+    dashboard   Generate interactive HTML dashboard from existing results
     compare     Compare with baseline results
     clean       Remove all output files
     list        List available benchmarks
@@ -183,6 +184,19 @@ main() {
                 # Visualize all benchmarks
                 python3 "$viz_script" "" "$OUTPUT_DIR"
             fi
+            ;;
+        dashboard)
+            if ! command -v python3 &>/dev/null; then
+                log_error "python3 not found. Please install Python 3."
+                exit 1
+            fi
+            local dash_script="${SCRIPT_DIR}/dashboard.py"
+            if [[ ! -f "$dash_script" ]]; then
+                log_error "Dashboard script not found: $dash_script"
+                exit 1
+            fi
+            python3 "$dash_script" "$OUTPUT_DIR" "$OUTPUT_DIR/dashboard.html"
+            log_success "Dashboard: $OUTPUT_DIR/dashboard.html"
             ;;
         compare)
             compare_with_baseline "${BASELINE_FILE:-$OUTPUT_DIR/baseline.csv}"

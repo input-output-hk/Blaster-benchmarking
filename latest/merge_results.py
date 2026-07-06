@@ -276,6 +276,45 @@ tr:hover td{background:rgba(148,163,199,.05)}
 </style>"""
 
 
+def emit_markdown(benches: dict, tactics: list, man: dict, report_url: str = "") -> str:
+    """Compact markdown summary table for injection into a README (between markers)."""
+    suites = sorted(benches)
+    # totals[tac] = (solved, total) accumulated across suites
+    totals = {t: [0, 0] for t in tactics}
+    per = {t: {} for t in tactics}  # per[tac][suite] = (ok, n)
+    for suite in suites:
+        thms = set()
+        for t in tactics:
+            thms |= set(benches[suite].get(t, {}))
+        n = len(thms)
+        summ = summarize(tactics, benches[suite], sorted(thms))
+        for t in tactics:
+            ok = summ[t]["OK"]
+            per[t][suite] = (ok, n)
+            totals[t][0] += ok
+            totals[t][1] += n
+
+    head = "| Tactic | Version | " + " | ".join(suites) + " | **Solved** |"
+    sep = "|:--|:--|" + "--:|" * len(suites) + "--:|"
+    rows = [head, sep]
+    # order tactics by total solved, descending
+    for t in sorted(tactics, key=lambda x: totals[x][0], reverse=True):
+        info = man.get(t, {})
+        tc = info.get("toolchain", "?").replace("leanprover/lean4:", "")
+        commit = info.get("resolved_commit", "?")
+        build = info.get("build_status", "OK")
+        ver = f"`{tc}` @ `{commit}`" if build == "OK" else f"`{tc}` **{build}**"
+        cells = " | ".join(f"{per[t][s][0]}/{per[t][s][1]}" for s in suites)
+        sol, tot = totals[t]
+        rows.append(f"| `{t}` | {ver} | {cells} | **{sol}/{tot}** |")
+
+    note = ("\n_Each tactic runs in an isolated Lake project on its **latest default branch** and that "
+            "branch's own Lean toolchain (tracked live). Cells show theorems **solved / total**; "
+            "cross-version numbers can shift with mathlib changes, not only tactic quality._")
+    link = f"\n\n**[Full interactive report →]({report_url})**" if report_url else ""
+    return "\n".join(rows) + "\n" + note + link + "\n"
+
+
 def wrap_standalone(fragment: str) -> str:
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -296,9 +335,15 @@ def main():
     out_html.write_text(wrap_standalone(fragment), encoding="utf-8")
     frag_html = results / "report.artifact.html"
     frag_html.write_text(fragment, encoding="utf-8")
+    # Markdown summary for README injection (report URL comes from env in CI).
+    import os
+    md = emit_markdown(benches, tactics, man, os.environ.get("BENCH_REPORT_URL", ""))
+    md_out = results / "summary.md"
+    md_out.write_text(md, encoding="utf-8")
     print(f"Merged CSVs: {results/'merged'}")
     print(f"Report:      {out_html}")
     print(f"Artifact:    {frag_html}")
+    print(f"Summary md:  {md_out}")
     # brief console summary
     for bench in sorted(benches):
         thms = set()

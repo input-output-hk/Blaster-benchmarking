@@ -130,219 +130,118 @@ EOF
     log_success "LaTeX output: $combined"
 }
 
-# Generate JSON output
+# Generate JSON output (pure Python, no jq dependency)
 generate_json_output() {
     local json="$OUTPUT_DIR/all_benchmarks.json"
-    
     log_info "Generating JSON output..."
-    
-    cat > "$json" <<EOF
-{
-  "metadata": {
-    "timestamp": "$(date -Iseconds)",
-    "timeout": $TIMEOUT,
-    "parallel_jobs": $PARALLEL_JOBS,
-    "tactics": $(printf '%s\n' "${TACTICS[@]}" | jq -R . | jq -s .)
-  },
-  "benchmarks": [
-EOF
-    
-    local first_benchmark=1
+
+    # Build args: csv_file:display_name:timeout pairs
+    local csv_specs=()
     for spec in "${BENCHMARK_FILES[@]}"; do
-        read -r import_path file_path display_name timeout <<< "$(parse_benchmark_spec "$spec")"
+        read -r _ file_path display_name timeout <<< "$(parse_benchmark_spec "$spec")"
         local csv="$OUTPUT_DIR/${display_name}_results.csv"
-        
-        if [[ ! -f "$csv" ]]; then
-            log_warning "CSV not found for $display_name, skipping"
-            continue
-        fi
-        
-        log_verbose "Processing JSON for $display_name"
-        
-        # Add comma separator between benchmarks
-        [[ $first_benchmark -eq 0 ]] && echo "," >> "$json"
-        first_benchmark=0
-        
-        cat >> "$json" <<EOF
-    {
-      "name": "$display_name",
-      "file": "$file_path",
-      "timeout": $timeout,
-      "theorems": [
-EOF
-        
-        local first_theorem=1
-        while IFS=, read -r bench theorem stmt rest; do
-            # Add comma separator between theorems
-            if [[ $first_theorem -eq 0 ]]; then
-                echo "," >> "$json"
-            fi
-            first_theorem=0
-            
-            # Escape JSON strings
-            local safe_theorem=$(echo "$theorem" | sed 's/\\/\\\\/g; s/"/\\"/g')
-            local safe_stmt=$(echo "$stmt" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
-            
-            cat >> "$json" <<EOF
-        {
-          "name": "$safe_theorem",
-          "statement": "$safe_stmt",
-          "results": {
-EOF
-            
-            # Process tactic results
-            local remaining="$rest"
-            local first_tactic=1
-            for tactic in "${TACTICS[@]}"; do
-                local time=$(echo "$remaining" | cut -d',' -f1)
-                local status=$(echo "$remaining" | cut -d',' -f2)
-                remaining=$(echo "$remaining" | cut -d',' -f3-)
-                
-                if [[ $first_tactic -eq 0 ]]; then
-                    echo "," >> "$json"
-                fi
-                first_tactic=0
-                
-                cat >> "$json" <<EOF
-            "$tactic": {
-              "time_ms": $([ "$status" = "OK" ] && echo "$time" || echo "null"),
-              "status": "$status"
-            }
-EOF
-            done
-            
-            echo "          }" >> "$json"
-            echo -n "        }" >> "$json"
-        done < <(tail -n +2 "$csv")
-
-        cat >> "$json" <<EOF
-
-      ]
-    }
-EOF
+        [[ -f "$csv" ]] && csv_specs+=("${csv}:${display_name}:${timeout}")
     done
-    
-    cat >> "$json" <<EOF
-  ]
+
+    python3 - "$json" "$TIMEOUT" "$PARALLEL_JOBS" "${csv_specs[@]}" <<'PYEOF'
+import csv, json, sys
+from datetime import datetime, timezone
+
+out_file = sys.argv[1]
+timeout = int(sys.argv[2])
+parallel = int(sys.argv[3])
+specs = sys.argv[4:]
+
+benchmarks = []
+for spec in specs:
+    csv_file, name, bench_timeout = spec.rsplit(':', 2)
+    with open(csv_file, newline='') as f:
+        rows = list(csv.DictReader(f))
+    tactics = [k[:-len('_status')] for k in (rows[0] if rows else {}) if k.endswith('_status')]
+    theorems = []
+    for row in rows:
+        results = {}
+        for t in tactics:
+            status = row.get(f'{t}_status', 'FAIL')
+            raw_time = row.get(f'{t}_time', '')
+            time_ms = int(raw_time) if status == 'OK' and raw_time.lstrip('-').isdigit() else None
+            results[t] = {"time_ms": time_ms, "status": status}
+        theorems.append({"name": row.get('Theorem', ''), "statement": row.get('Statement', ''), "results": results})
+    benchmarks.append({"name": name, "timeout": int(bench_timeout), "theorems": theorems})
+
+output = {
+    "metadata": {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timeout": timeout,
+        "parallel_jobs": parallel,
+    },
+    "benchmarks": benchmarks
 }
-EOF
-    
+with open(out_file, 'w') as f:
+    json.dump(output, f, indent=2)
+print(f"JSON output: {out_file}")
+PYEOF
+
     log_success "JSON output: $json"
 }
 
-# Calculate statistics for a benchmark
+# Calculate statistics for a benchmark using Python for robust CSV parsing
 # Args: csv_file
 calculate_statistics() {
     local csv="$1"
-    
     [[ ! -f "$csv" ]] && return 1
-    
-    local total_theorems=$(tail -n +2 "$csv" | wc -l)
-    
-    echo "total_theorems:$total_theorems"
-    
-    for tactic in "${TACTICS[@]}"; do
-        local successes=0
-        local timeouts=0
-        local failures=0
-        local total_time=0
-        local count=0
-        
-        # Parse results for this tactic
-        tail -n +2 "$csv" | while IFS=',' read -r line; do
-            # Find tactic columns (need to parse header to get positions)
-            :
-        done
-        
-        # Count by searching for patterns
-        successes=$(grep -o ",OK" "$csv" | grep -B1 "$tactic" | grep -c "OK" || echo 0)
-        timeouts=$(grep -o ",TIMEOUT" "$csv" | grep -B1 "$tactic" | grep -c "TIMEOUT" || echo 0)
-        failures=$(grep -o ",FAIL" "$csv" | grep -B1 "$tactic" | grep -c "FAIL" || echo 0)
-        
-        echo "${tactic}_success:$successes"
-        echo "${tactic}_timeout:$timeouts"
-        echo "${tactic}_fail:$failures"
-    done
+    python3 - "$csv" <<'PYEOF'
+import csv, sys
+csv_file = sys.argv[1]
+with open(csv_file, newline='') as f:
+    reader = csv.DictReader(f)
+    rows = list(reader)
+print(f"total_theorems:{len(rows)}")
+for key in rows[0].keys():
+    if not key.endswith('_status'):
+        continue
+    tactic = key[:-len('_status')]
+    ok = sum(1 for r in rows if r[key] == 'OK')
+    to = sum(1 for r in rows if r[key] == 'TIMEOUT')
+    fa = sum(1 for r in rows if r[key] == 'FAIL')
+    print(f"{tactic}_success:{ok}")
+    print(f"{tactic}_timeout:{to}")
+    print(f"{tactic}_fail:{fa}")
+PYEOF
 }
 
 # Show summary statistics
 show_summary() {
     log_info "Benchmark Summary"
     echo ""
-    
+
     for spec in "${BENCHMARK_FILES[@]}"; do
         read -r _ _ display_name _ <<< "$(parse_benchmark_spec "$spec")"
         local csv="$OUTPUT_DIR/${display_name}_results.csv"
-        
-        if [[ ! -f "$csv" ]]; then
-            continue
-        fi
-        
+
+        [[ ! -f "$csv" ]] && continue
+
         echo -e "${BLUE}═══ $display_name ═══${NC}"
-        
-        local total=$(tail -n +2 "$csv" | wc -l)
-        echo "Total theorems: $total"
-        echo ""
-        
-        # Calculate statistics for each tactic
-        printf "%-10s %8s %8s %8s %8s\n" "Tactic" "Success" "Timeout" "Fail" "Avg Time"
-        printf "%-10s %8s %8s %8s %8s\n" "------" "-------" "-------" "----" "--------"
-        
-        for tactic in "${TACTICS[@]}"; do
-            local success=0
-            local timeout=0
-            local fail=0
-            local times=()
-            
-            # Parse CSV for this tactic's results
-            local col_idx=4  # Starting column for first tactic
-            for t in "${TACTICS[@]}"; do
-                if [[ "$t" == "$tactic" ]]; then
-                    break
-                fi
-                ((col_idx += 2))
-            done
-            
-            local status_col=$((col_idx + 1))
-            
-            while IFS=',' read -r line; do
-                local status=$(echo "$line" | cut -d',' -f${status_col})
-                local time=$(echo "$line" | cut -d',' -f${col_idx})
-                
-                case "$status" in
-                    OK)
-                        ((success++))
-                        times+=("$time")
-                        ;;
-                    TIMEOUT)
-                        ((timeout++))
-                        ;;
-                    FAIL)
-                        ((fail++))
-                        ;;
-                esac
-            done < <(tail -n +2 "$csv")
-            
-            # Calculate average time
-            local avg_time="N/A"
-            if [[ ${#times[@]} -gt 0 ]]; then
-                local sum=0
-                for t in "${times[@]}"; do
-                    ((sum += t))
-                done
-                avg_time=$(( sum / ${#times[@]} ))
-                avg_time="${avg_time}ms"
-            fi
-            
-            # Format output with colors
-            local success_str=$(printf "${GREEN}%7d${NC}" "$success")
-            local timeout_str=$(printf "${RED}%7d${NC}" "$timeout")
-            local fail_str=$(printf "${RED}%7d${NC}" "$fail")
-            
-            printf "%-10s %8s %8s %8s %8s\n" \
-                "$tactic" "$success_str" "$timeout_str" "$fail_str" "$avg_time"
-        done
-        
+
+        python3 - "$csv" "$GREEN" "$RED" "$YELLOW" "$NC" <<'PYEOF'
+import csv, sys
+csv_file, GREEN, RED, YELLOW, NC = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+with open(csv_file, newline='') as f:
+    rows = list(csv.DictReader(f))
+tactics = [k[:-len('_status')] for k in rows[0] if k.endswith('_status')] if rows else []
+print(f"Total theorems: {len(rows)}")
+print()
+print(f"{'Tactic':<20} {'Success':>8} {'Timeout':>8} {'Fail':>8} {'Avg(ms)':>10}")
+print(f"{'-'*20} {'-'*8} {'-'*8} {'-'*8} {'-'*10}")
+for tactic in tactics:
+    ok_times = [int(r[f'{tactic}_time']) for r in rows if r.get(f'{tactic}_status') == 'OK'
+                and r.get(f'{tactic}_time', '').lstrip('-').isdigit()]
+    to = sum(1 for r in rows if r.get(f'{tactic}_status') == 'TIMEOUT')
+    fa = sum(1 for r in rows if r.get(f'{tactic}_status') == 'FAIL')
+    avg = f"{sum(ok_times)//len(ok_times)}ms" if ok_times else "N/A"
+    print(f"{tactic:<20} {GREEN}{len(ok_times):>8}{NC} {RED}{to:>8}{NC} {RED}{fa:>8}{NC} {avg:>10}")
+PYEOF
+
         echo ""
     done
 }

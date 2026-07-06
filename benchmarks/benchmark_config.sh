@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Configuration file for benchmark system
 
+# macOS compatibility: prefer gtimeout (GNU coreutils) over BSD timeout
+# Install via: brew install coreutils
+if ! command -v timeout &>/dev/null && command -v gtimeout &>/dev/null; then
+    timeout() { gtimeout "$@"; }
+    export -f timeout
+fi
+
 # Directories
 TEMP_DIR="${TEMP_DIR:-benchmark_temp}"
 OUTPUT_DIR="${OUTPUT_DIR:-benchmark_results}"
