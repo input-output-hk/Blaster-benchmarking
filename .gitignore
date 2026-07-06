@@ -22,3 +22,4 @@ latest/*.log
 latest/__pycache__/
 **/__pycache__/
 latest/projects/
+latest/results_cache/

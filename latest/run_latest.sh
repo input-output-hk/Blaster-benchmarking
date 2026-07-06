@@ -5,8 +5,11 @@
 # branch and whatever Lean toolchain that branch currently declares (tracked live,
 # not pinned). Results + a version manifest land under latest/results/.
 #
-# blaster's latest is v4.24.0 == the repo root project, so it is run there rather
-# than duplicated (see --with-blaster).
+# Results are cached per tool keyed on (resolved commit + toolchain + benchmark
+# source hash + CACHE_VERSION): if a tool's branch HEAD has not moved since its last
+# successful run, its cached CSVs are reused and the expensive build+run is skipped.
+# Set NO_CACHE=1 to force a full re-run. Cache lives in latest/results_cache/ (in CI,
+# back that dir with actions/cache).
 #
 # Requires bash 5 (associative-array-free, but nameref/${var^^} used); re-exec if old.
 if [[ "${BASH_VERSINFO:-0}" -lt 4 ]]; then
@@ -18,11 +21,43 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"
 BENCH="$REPO_ROOT/benchmarks/benchmark.sh"
 BASH5="$(command -v /opt/homebrew/bin/bash || command -v bash)"
-RESULTS="$HERE/results"
+RESULTS="${BENCH_RESULTS:-$HERE/results}"
 MANIFEST="$RESULTS/manifest.tsv"
 TIMEOUT="${TIMEOUT:-20}"
 
-mkdir -p "$RESULTS"
+# --- result caching ---
+# Bump CACHE_VERSION whenever the harness's test generation changes in a way that
+# would alter results, to invalidate every cached entry.
+CACHE_VERSION="1"
+CACHE_DIR="${RESULTS_CACHE:-$HERE/results_cache}"
+NO_CACHE="${NO_CACHE:-0}"
+
+mkdir -p "$RESULTS" "$CACHE_DIR"
+
+# Portable content hash of stdin -> hex digest.
+hash_stdin() {
+    if command -v shasum &>/dev/null; then shasum -a 1 | awk '{print $1}'
+    elif command -v sha1sum &>/dev/null; then sha1sum | awk '{print $1}'
+    else cksum | tr -d ' \t'; fi
+}
+
+# Hash of the benchmark theorem sources (names + contents): changing any theorem
+# invalidates every tool's cache.
+BENCH_HASH="$({ find "$REPO_ROOT/BlasterBenchmarks" -name '*.lean' -type f | sort
+                find "$REPO_ROOT/BlasterBenchmarks" -name '*.lean' -type f | sort | xargs cat
+              } 2>/dev/null | hash_stdin)"
+
+# Resolve a branch's HEAD commit without cloning. Echoes short sha, or "" on failure.
+resolve_commit() {
+    local url="$1" branch="$2" line
+    line="$(git ls-remote "$url" "refs/heads/$branch" 2>/dev/null | head -1)"
+    echo "${line:0:9}"
+}
+
+# Cache key for a tool's results.
+cache_key() {  # tool commit toolchain tactic
+    printf '%s|%s|%s|%s|%s|%s' "$1" "$2" "$3" "$4" "$BENCH_HASH" "$CACHE_VERSION" | hash_stdin
+}
 
 # tool table: dir | require-name | git-url | branch | tactic | build-module | import-override
 #   dir             filesystem dir + results subdir (lowercase)
@@ -121,11 +156,32 @@ run_tool() {
     local proj="$HERE/projects/$dir"
     echo "==================== $dir ($branch) ===================="
 
+    # --- cheap identity resolution (no clone / no build) for the cache key ---
+    local commit tc key="" cdir=""
+    commit="$(resolve_commit "$url" "$branch")"
+    tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+    if [[ -n "$commit" && -n "$tc" ]]; then
+        key="$(cache_key "$dir" "$commit" "$tc" "$tactic")"
+        cdir="$CACHE_DIR/$dir/$key"
+    fi
+
+    # --- cache hit: reuse results, skip the expensive build + run ---
+    if [[ "$NO_CACHE" != "1" && -n "$cdir" ]] && compgen -G "$cdir/"'*_results.csv' >/dev/null 2>&1; then
+        echo "  cache HIT ($commit @ $tc) - reusing results, skipping build"
+        mkdir -p "$RESULTS/$dir"
+        cp "$cdir/"*_results.csv "$RESULTS/$dir/"
+        manifest_put "$dir" "$tc" "$branch" "$commit" "$tactic" "CACHED"
+        echo "  done (cached): results in $RESULTS/$dir"
+        return
+    fi
+    [[ "$NO_CACHE" == "1" ]] && echo "  NO_CACHE=1 - forcing rebuild" \
+                             || echo "  cache miss (${commit:-?} @ ${tc:-?}) - building"
+
     scaffold "$dir" "$reqname" "$url" "$branch" "$tactic" "$import_override" || {
         manifest_put "$dir" "?" "$branch" "?" "$tactic" "SCAFFOLD_FAIL"
         return
     }
-    local tc; tc="$(tr -d '[:space:]' < "$proj/lean-toolchain")"
+    [[ -z "$tc" ]] && tc="$(tr -d '[:space:]' < "$proj/lean-toolchain")"
     echo "  toolchain: $tc"
 
     ( cd "$proj" || exit 1
@@ -135,26 +191,33 @@ run_tool() {
     )
     local build_rc=$?
 
-    # resolved commit of the tool from the manifest
-    local commit
-    commit="$(python3 -c "import json,sys
+    # authoritative resolved commit from the built manifest (falls back to ls-remote)
+    if [[ -z "$commit" ]]; then
+        commit="$(python3 -c "import json
 try:
     d=json.load(open('$proj/lake-manifest.json'))
-    for p in d['packages']:
-        if p.get('name')=='$reqname': print(p['rev'][:9]); break
+    print(next((p['rev'][:9] for p in d['packages'] if p.get('name')=='$reqname'),'?'))
 except Exception: print('?')" 2>/dev/null)"
-    commit="${commit:-?}"
+        commit="${commit:-?}"
+    fi
 
     if [[ $build_rc -ne 0 ]]; then
         echo "  BUILD FAILED (see $proj/build.log)"
         manifest_put "$dir" "$tc" "$branch" "$commit" "$tactic" "BUILD_FAIL"
-        return
+        return   # failures are never cached, so they retry next run
     fi
 
     echo "  running benchmark..."
     ( cd "$proj" && QUIET=1 "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" > bench.log 2>&1 )
     manifest_put "$dir" "$tc" "$branch" "$commit" "$tactic" "OK"
     echo "  done: results in $RESULTS/$dir"
+
+    # --- save results to cache under the identity key ---
+    if [[ -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
+        [[ -z "$key" ]] && cdir="$CACHE_DIR/$dir/$(cache_key "$dir" "$commit" "$tc" "$tactic")"
+        mkdir -p "$cdir"
+        cp "$RESULTS/$dir/"*_results.csv "$cdir/" 2>/dev/null && echo "  cached results for reuse"
+    fi
 }
 
 # --- arg handling: which tools to run (default: all) ---
