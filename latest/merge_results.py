@@ -129,9 +129,10 @@ def col_label(tac: str, man: dict) -> str:
     tc = info.get("toolchain", "?").replace("leanprover/lean4:", "")
     commit = info.get("resolved_commit", "?")
     build = info.get("build_status", "OK")
-    tag = "" if build == "OK" else f' <span style="color:#f87171">[{html.escape(build)}]</span>'
+    cached = " · cached" if build == "CACHED" else ""
+    tag = "" if build in ("OK", "CACHED") else f' <span style="color:#f87171">[{html.escape(build)}]</span>'
     return (f'<div class="tac">{html.escape(tac)}</div>'
-            f'<div class="ver">{html.escape(tc)} · {html.escape(commit)}</div>{tag}')
+            f'<div class="ver">{html.escape(tc)} · {html.escape(commit)}{cached}</div>{tag}')
 
 
 def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
@@ -161,7 +162,7 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
     for tac in tactics:
         info = man.get(tac, {})
         build = info.get("build_status", "?")
-        bcol = "#4ade80" if build == "OK" else "#f87171"
+        bcol = "#4ade80" if build in ("OK", "CACHED") else "#f87171"
         parts.append(
             f'<tr><td class="mono">{html.escape(tac)}</td>'
             f'<td class="mono">{html.escape(info.get("branch","?"))}</td>'
@@ -303,7 +304,10 @@ def emit_markdown(benches: dict, tactics: list, man: dict, report_url: str = "")
         tc = info.get("toolchain", "?").replace("leanprover/lean4:", "")
         commit = info.get("resolved_commit", "?")
         build = info.get("build_status", "OK")
-        ver = f"`{tc}` @ `{commit}`" if build == "OK" else f"`{tc}` **{build}**"
+        if build in ("OK", "CACHED"):
+            ver = f"`{tc}` @ `{commit}`" + (" _(cached)_" if build == "CACHED" else "")
+        else:
+            ver = f"`{tc}` **{build}**"
         cells = " | ".join(f"{per[t][s][0]}/{per[t][s][1]}" for s in suites)
         sol, tot = totals[t]
         rows.append(f"| `{t}` | {ver} | {cells} | **{sol}/{tot}** |")
