@@ -24,15 +24,19 @@ TIMEOUT="${TIMEOUT:-20}"
 
 mkdir -p "$RESULTS"
 
-# tool table: dir | require-name | git-url | branch | tactic | build-module
-#   dir          filesystem dir + results subdir (lowercase)
-#   require-name Lean package name in the lakefile AND lake-manifest (case matters:
-#                LeanHammer's package is "Hammer")
-#   build-module the exact module the benchmark imports, so we build precisely what
-#                `lake env lean` will need
+# tool table: dir | require-name | git-url | branch | tactic | build-module | import-override
+#   dir             filesystem dir + results subdir (lowercase)
+#   require-name    Lean package name in the lakefile AND lake-manifest (case matters:
+#                   LeanHammer's package is "Hammer"; Lean-blaster's main renamed
+#                   its package Solver -> Blaster)
+#   build-module    the exact module the benchmark imports, so we build precisely
+#                   what `lake env lean` will need
+#   import-override (optional) tactic import to use instead of benchmark_config.sh's
+#                   default — needed when the latest branch renamed its module
+#                   namespace (blaster: Solver.Command.Tactic -> Blaster.Command.Tactic)
 # (toolchain is fetched live from the branch, implementing "track moving branch")
 TOOLS=(
-    "blaster|Solver|https://github.com/input-output-hk/Lean-blaster|main|blaster|Solver.Command.Tactic"
+    "blaster|Blaster|https://github.com/input-output-hk/Lean-blaster|main|blaster|Blaster.Command.Tactic|Blaster.Command.Tactic"
     "smt|smt|https://github.com/ufmg-smite/lean-smt.git|main|smt +model|Smt"
     "hammer|Hammer|https://github.com/JOSHCLUNE/LeanHammer.git|main|hammer|Hammer"
     "auto|auto|https://github.com/leanprover-community/lean-auto.git|main|auto|Auto.Tactic"
@@ -51,7 +55,7 @@ raw_toolchain_url() {
 }
 
 scaffold() {
-    local dir="$1" reqname="$2" url="$3" branch="$4" tactic="$5"
+    local dir="$1" reqname="$2" url="$3" branch="$4" tactic="$5" import_override="${6:-}"
     local proj="$HERE/projects/$dir"
     mkdir -p "$proj"
 
@@ -90,6 +94,11 @@ TACTICS=("${tactic}")
 OUTPUT_DIR="${RESULTS}/${dir}"
 TEMP_DIR="benchmark_temp"
 EOF
+    # Override the tactic's import when the latest branch renamed its module
+    # namespace (TACTIC_IMPORTS is a -A array declared in benchmark_config.sh).
+    if [[ -n "$import_override" ]]; then
+        printf 'TACTIC_IMPORTS["%s"]="%s"\n' "$tactic" "$import_override" >> "$proj/config.sh"
+    fi
     return 0
 }
 
@@ -98,21 +107,21 @@ EOF
 [[ -f "$MANIFEST" ]] || printf 'tool\ttoolchain\tbranch\tresolved_commit\ttactic\tbuild_status\n' > "$MANIFEST"
 
 # Append a manifest row, replacing any existing row for the same tool first.
+# Uses awk (portable) rather than `grep -P`, which BSD/macOS grep lacks.
 manifest_put() {
     local tool="$1"; shift
     local tmp="$MANIFEST.tmp"
-    grep -v -P "^${tool}\t" "$MANIFEST" > "$tmp" 2>/dev/null || true
-    cat "$tmp" > "$MANIFEST"; rm -f "$tmp"
+    awk -F'\t' -v t="$tool" 'NR==1 || $1!=t' "$MANIFEST" > "$tmp" && mv "$tmp" "$MANIFEST"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$tool" "$@" >> "$MANIFEST"
 }
 
 run_tool() {
     local row="$1"
-    IFS='|' read -r dir reqname url branch tactic module <<< "$row"
+    IFS='|' read -r dir reqname url branch tactic module import_override <<< "$row"
     local proj="$HERE/projects/$dir"
     echo "==================== $dir ($branch) ===================="
 
-    scaffold "$dir" "$reqname" "$url" "$branch" "$tactic" || {
+    scaffold "$dir" "$reqname" "$url" "$branch" "$tactic" "$import_override" || {
         manifest_put "$dir" "?" "$branch" "?" "$tactic" "SCAFFOLD_FAIL"
         return
     }

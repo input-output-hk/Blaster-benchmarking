@@ -127,8 +127,8 @@ def col_label(tac: str, man: dict) -> str:
     if not info:
         return html.escape(tac)
     tc = info.get("toolchain", "?").replace("leanprover/lean4:", "")
-    commit = info.get("commit", "?")
-    build = info.get("build", "OK")
+    commit = info.get("resolved_commit", "?")
+    build = info.get("build_status", "OK")
     tag = "" if build == "OK" else f' <span style="color:#f87171">[{html.escape(build)}]</span>'
     return (f'<div class="tac">{html.escape(tac)}</div>'
             f'<div class="ver">{html.escape(tc)} · {html.escape(commit)}</div>{tag}')
@@ -150,13 +150,13 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
                  '<th>commit</th><th>build</th></tr>')
     for tac in tactics:
         info = man.get(tac, {})
-        build = info.get("build", "?")
+        build = info.get("build_status", "?")
         bcol = "#4ade80" if build == "OK" else "#f87171"
         parts.append(
             f'<tr><td class="mono">{html.escape(tac)}</td>'
             f'<td class="mono">{html.escape(info.get("branch","?"))}</td>'
             f'<td class="mono">{html.escape(info.get("toolchain","?"))}</td>'
-            f'<td class="mono">{html.escape(info.get("commit","?"))}</td>'
+            f'<td class="mono">{html.escape(info.get("resolved_commit","?"))}</td>'
             f'<td class="mono" style="color:{bcol}">{html.escape(build)}</td></tr>')
     parts.append('</table>')
 
