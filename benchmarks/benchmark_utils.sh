@@ -4,18 +4,21 @@
 # Logging functions
 log_verbose() {
     [[ $VERBOSE -eq 1 ]] && echo -e "${CYAN}[VERBOSE]${NC} $*">&2
+    return 0
 }
 
 log_info() {
     [[ $QUIET -eq 0 ]] && echo -e "${BLUE}[INFO]${NC} $*">&2
+    return 0
 }
 
 log_success() {
     [[ $QUIET -eq 0 ]] && echo -e "${GREEN}[SUCCESS]${NC} $*">&2
+    return 0
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $*"
+    echo -e "${YELLOW}[WARNING]${NC} $*" >&2
 }
 
 log_error() {

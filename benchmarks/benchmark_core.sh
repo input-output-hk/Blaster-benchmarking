@@ -28,9 +28,10 @@ test_tactic() {
         echo "0|DRY_RUN"
         return 0
     fi
-    
-    # Create test file
-    local test_file="$TEMP_DIR/Test_${benchmark_name}_${theorem_name}_${tactic}.lean"
+
+    # Create test file (sanitize tactic name for filesystem safety)
+    local safe_tactic="${tactic//[^a-zA-Z0-9_-]/_}"
+    local test_file="$TEMP_DIR/Test_${benchmark_name}_${theorem_name}_${safe_tactic}.lean"
     local tactic_import=$(get_tactic_import "$tactic")
     local tactic_preamble=$(get_tactic_preamble "$tactic")
     
@@ -44,10 +45,10 @@ test_tactic() {
     
     # Run test with timeout
     local start=$(date +%s%N)
-    local error_log="$TEMP_DIR/error_${benchmark_name}_${theorem_name}_${tactic}.log"
+    local error_log="$TEMP_DIR/error_${benchmark_name}_${theorem_name}_${safe_tactic}.log"
     local result
-    
-    if timeout "${timeout}s" lake env lean "$test_file" 2>&1 > "$error_log"; then
+
+    if timeout "${timeout}s" lake env lean "$test_file" > "$error_log" 2>&1; then
         local elapsed=$(( ($(date +%s%N) - start) / 1000000 ))
         result="${elapsed}|OK"
     else
@@ -55,13 +56,37 @@ test_tactic() {
         if [[ $exit_code -eq 124 ]]; then
             result="timeout|TIMEOUT"
         else
-            result="fail|FAIL"
+            # Distinguish a genuine tactic failure from an environment error:
+            # a theorem whose statement does not even elaborate on this toolchain
+            # (mathlib API drift, or a mangled extraction) must not be blamed on
+            # the tactic. Lazily re-check only on failure (cached per theorem).
+            local env_cache_key=$(generate_cache_key "$benchmark_name" "$theorem_name" "__ENV__" "$file_hash")
+            local env_status=$(check_cache "$env_cache_key")
+            if [[ -z "$env_status" ]]; then
+                local env_file="$TEMP_DIR/Env_${benchmark_name}_${theorem_name}.lean"
+                {
+                    [[ -n "$context" ]] && echo "$context" && echo ""
+                    echo "example $statement := by sorry"
+                } > "$env_file"
+                if timeout "${timeout}s" lake env lean "$env_file" \
+                        > "$TEMP_DIR/env_${benchmark_name}_${theorem_name}.log" 2>&1; then
+                    env_status="OK"
+                else
+                    env_status="ENV"
+                fi
+                store_cache "$env_cache_key" "$env_status"
+            fi
+            if [[ "$env_status" == "ENV" ]]; then
+                result="env|ENV"
+            else
+                result="fail|FAIL"
+            fi
         fi
     fi
-    
+
     # Store in cache
     store_cache "$cache_key" "$result"
-    
+
     echo "$result"
 }
 
@@ -104,6 +129,9 @@ process_theorem() {
                     ;;
                 FAIL)
                     echo -e "    ${tactic}: ${RED}✗ FAIL${NC}" >&2
+                    ;;
+                ENV)
+                    echo -e "    ${tactic}: ${YELLOW}⊘ ENV${NC} (statement does not elaborate)" >&2
                     ;;
                 DRY_RUN)
                     echo -e "    ${tactic}: ${CYAN}[DRY RUN]${NC}" >&2
@@ -171,10 +199,12 @@ run_benchmark_file() {
             tactic_preambles_serialized+="[\"$key\"]=\"${TACTIC_PREAMBLES[$key]}\""$'\n'
         done
 
-        cat > "$wrapper_script" <<'WRAPPER_EOF'
+        cat > "$wrapper_script" <<WRAPPER_EOF
 #!/bin/bash
 # Wrapper script for parallel execution
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../benchmarks" && pwd)"
+SCRIPT_DIR="${SCRIPT_DIR}"
+WRAPPER_EOF
+        cat >> "$wrapper_script" <<'WRAPPER_EOF'
 
 # Source required modules
 source "${SCRIPT_DIR}/benchmark_config.sh"
@@ -243,7 +273,7 @@ test_tactic() {
     local error_log="$TEMP_DIR/error_${benchmark_name}_${theorem_name}_${tactic}_$$.log"
     local result
 
-    if timeout "${timeout}s" lake env lean "$test_file" 2>&1 > "$error_log"; then
+    if timeout "${timeout}s" lake env lean "$test_file" > "$error_log" 2>&1; then
         local elapsed=$(( ($(date +%s%N) - start) / 1000000 ))
         result="${elapsed}|OK"
     else
@@ -446,9 +476,13 @@ test_single() {
             TIMEOUT)
                 echo -e "${RED}✗ TIMEOUT${NC} (>${timeout}s)"
                 ;;
+            ENV)
+                echo -e "${YELLOW}⊘ ENV${NC} (statement does not elaborate on this toolchain)"
+                ;;
             FAIL)
                 echo -e "${RED}✗ FAILED${NC}"
-                local error_log="$TEMP_DIR/error_${display_name}_${target_theorem}_${target_tactic}.log"
+                local safe_target_tactic="${target_tactic//[^a-zA-Z0-9_-]/_}"
+                local error_log="$TEMP_DIR/error_${display_name}_${target_theorem}_${safe_target_tactic}.log"
                 if [[ -f "$error_log" ]]; then
                     echo ""
                     echo "Error output:"
@@ -470,5 +504,10 @@ generate_all_outputs() {
     generate_latex_output
     generate_json_output
     show_summary
+    # Generate interactive HTML dashboard if python3 is available
+    local dash_script="${SCRIPT_DIR}/dashboard.py"
+    if command -v python3 &>/dev/null && [[ -f "$dash_script" ]]; then
+        python3 "$dash_script" "$OUTPUT_DIR" "$OUTPUT_DIR/dashboard.html" || true
+    fi
     log_success "Output generation complete"
 }
