@@ -30,6 +30,7 @@ BENCHMARK_FILES=(
     "BlasterBenchmarks.STG4.STG4:BlasterBenchmarks/STG4/STG4.lean:STG4:20"
     "BlasterBenchmarks.ITL4.ITLS:BlasterBenchmarks/ITL4/ITL4.lean:ITL4:20"
     "BlasterBenchmarks.MiniF2F.MiniF2F:BlasterBenchmarks/MiniF2F/MiniF2F.lean:MiniF2F:20"
+    "Verina:BlasterBenchmarks/Verina:Verina:20:taskdir"
 )
 
 # Tactics to test
