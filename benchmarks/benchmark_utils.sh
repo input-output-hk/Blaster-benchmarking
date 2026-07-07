@@ -142,12 +142,19 @@ extract_theorem_info() {
     local in_theorem=0
     local statement=""
     
+    # The char right after the name must be a boundary ([space:({]) so a name is not
+    # matched as a prefix of a longer one (e.g. mathd_numbertheory_5 vs _559). The
+    # boundary char (a leading ':' / '(' / '{') is kept — it belongs to the statement
+    # and is harmless in `example <stmt> := by ...`. Regexes live in vars so bash does
+    # not mis-parse the parentheses inside [[ =~ ]].
+    local re_inline="^[[:space:]]*theorem[[:space:]]+${theorem_name}([[:space:]:({].*):="
+    local re_start="^[[:space:]]*theorem[[:space:]]+${theorem_name}([[:space:]:({].*)"
     while IFS= read -r line; do
-        if [[ $line =~ ^[[:space:]]*theorem[[:space:]]+${theorem_name}[[:space:]]*(.*)[[:space:]]*:= ]]; then
-            statement="${BASH_REMATCH[1]%%:=*}"
+        if [[ $line =~ $re_inline ]]; then
+            statement="${BASH_REMATCH[1]}"
             echo "$statement"
             return 0
-        elif [[ $line =~ ^[[:space:]]*theorem[[:space:]]+${theorem_name}[[:space:]]+(.*) ]]; then
+        elif [[ $line =~ $re_start ]]; then
             statement="${BASH_REMATCH[1]}"
             in_theorem=1
         elif [[ $in_theorem -eq 1 && $line =~ :=[[:space:]]*by ]]; then
@@ -167,7 +174,7 @@ extract_theorem_info() {
 get_all_theorems() {
     grep -E "^[[:space:]]*theorem[[:space:]]+" "$1" | \
         awk '{print $2}' | \
-        sed 's/[[:space:]].*$//'
+        sed 's/[[:space:]:({].*$//'
 }
 
 # List available benchmarks
