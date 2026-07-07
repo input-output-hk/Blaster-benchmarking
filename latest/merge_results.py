@@ -29,6 +29,7 @@ TACTIC_ORDER = ["blaster", "smt +model", "auto", "aesop", "hammer"]
 SUITE_DESC = {
     "NNG4": "Lean Natural Number Game",
     "STG4": "Lean Set Theory Game",
+    "ITL4": "Introduction to Logic",
 }
 STATUS_RANK = {"OK": 0, "TIMEOUT": 1, "ENV": 2, "FAIL": 3}
 STATUS_STYLE = {
