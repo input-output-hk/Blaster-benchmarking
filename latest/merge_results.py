@@ -24,6 +24,12 @@ from pathlib import Path
 
 # Home tactic first, then the rest in a stable order.
 TACTIC_ORDER = ["blaster", "smt +model", "auto", "aesop", "hammer"]
+
+# Short descriptions for known benchmark suites (only ones we can state accurately).
+SUITE_DESC = {
+    "NNG4": "Lean Natural Number Game",
+    "STG4": "Lean Set Theory Game",
+}
 STATUS_RANK = {"OK": 0, "TIMEOUT": 1, "ENV": 2, "FAIL": 3}
 STATUS_STYLE = {
     "OK":      ("#4ade80", "✓"),
@@ -152,8 +158,51 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
                  'commit it actually ran on.</p>')
     if span:
         parts.append(f'<div class="spanline">toolchains span <b>{html.escape(span)}</b> '
-                     f'&middot; {len(tactics)} tactics &middot; 3 suites</div>')
+                     f'&middot; {len(tactics)} tactics &middot; {len(benches)} suites</div>')
     parts.append('</header>')
+
+    # ---- at-a-glance overview: suites + overall standings ----
+    suites = sorted(benches)
+    totals = {t: 0 for t in tactics}
+    grand_n = 0
+    suite_info = {}
+    for suite in suites:
+        thms = set()
+        for t in tactics:
+            thms |= set(benches[suite].get(t, {}))
+        n = len(thms)
+        grand_n += n
+        summ = summarize(tactics, benches[suite], sorted(thms))
+        oks = {t: summ[t]["OK"] for t in tactics}
+        for t in tactics:
+            totals[t] += oks[t]
+        best = max(tactics, key=lambda x: oks[x]) if tactics else None
+        suite_info[suite] = (n, best, oks.get(best, 0) if best else 0)
+
+    parts.append('<h2>Overview</h2>')
+    parts.append('<div class="suite-cards">')
+    for suite in suites:
+        n, best, best_ok = suite_info[suite]
+        desc = SUITE_DESC.get(suite, "")
+        pct = f"{best_ok / n * 100:.0f}%" if n else "0%"
+        parts.append(
+            f'<div class="scard"><div class="scard-name">{html.escape(suite)}</div>'
+            + (f'<div class="scard-desc">{html.escape(desc)}</div>' if desc else '<div class="scard-desc">&nbsp;</div>')
+            + f'<div class="scard-n mono">{n} theorems</div>'
+            f'<div class="scard-best">best <b>{html.escape(best or "-")}</b> '
+            f'<span class="mono">{best_ok}/{n} ({pct})</span></div></div>')
+    parts.append('</div>')
+
+    parts.append('<table class="standings"><tr><th>#</th><th>tactic</th>'
+                 '<th>solved</th><th style="width:46%"></th></tr>')
+    for i, tac in enumerate(sorted(tactics, key=lambda x: totals[x], reverse=True), 1):
+        sol = totals[tac]
+        pct = sol / grand_n * 100 if grand_n else 0
+        parts.append(
+            f'<tr><td class="mono dim">{i}</td><td class="mono">{html.escape(tac)}</td>'
+            f'<td class="mono"><b>{sol}</b>/{grand_n} <span class="dim">({pct:.0f}%)</span></td>'
+            f'<td><div class="bar"><span style="background:#4ade80;width:{pct:.1f}%"></span></div></td></tr>')
+    parts.append('</table>')
 
     # version manifest
     parts.append('<h2>Versions run</h2>')
@@ -259,7 +308,14 @@ th,td{padding:8px 13px;border-bottom:1px solid var(--bd);text-align:left;vertica
 th{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
 td{font-variant-numeric:tabular-nums}
 .manifest td,.summary td{white-space:nowrap}
-.manifest,.summary{background:var(--panel);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.manifest,.summary,.standings{background:var(--panel);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.suite-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0 26px}
+.scard{background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:16px 18px}
+.scard-name{font-weight:700;font-size:1.1rem;letter-spacing:-.01em}
+.scard-desc{color:var(--dim);font-size:.78rem;margin:1px 0 12px}
+.scard-n{font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+.scard-best{margin-top:8px;font-size:.9rem}.scard-best b{color:var(--acc)}
+.standings td{white-space:nowrap}.standings td:last-child{width:46%}
 .bar{display:flex;height:8px;border-radius:5px;overflow:hidden;background:rgba(148,163,199,.1)}
 .bar span{display:block}
 .scroll{overflow-x:auto;border:1px solid var(--bd);border-radius:10px}
