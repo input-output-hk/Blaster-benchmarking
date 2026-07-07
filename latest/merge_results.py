@@ -168,15 +168,13 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
     parts.append(STYLE)
     parts.append('<div class="wrap">')
     parts.append('<header class="masthead">')
-    parts.append('<div class="eyebrow">Lean4 &middot; tactic benchmark</div>')
-    parts.append('<h1>Every tactic on its <span class="hl">own latest branch</span></h1>')
-    parts.append('<p class="lede">Each tactic runs in an isolated Lake project pinned to its '
-                 '<b>latest default branch</b> and that branch\'s own Lean toolchain — tracked live, not '
-                 'pinned to a shared version. Every column is labelled with the toolchain and resolved '
-                 'commit it actually ran on.</p>')
+    parts.append('<h1>Lean 4 tactic benchmark</h1>')
+    parts.append(f'<p class="lede">{len(tactics)} tactics compared across {len(benches)} theorem suites. '
+                 'Each tactic runs in its own isolated Lake project on its latest branch and that '
+                 'branch\'s Lean toolchain; every column shows the toolchain and commit it ran on.</p>')
     if span:
-        parts.append(f'<div class="spanline">toolchains span <b>{html.escape(span)}</b> '
-                     f'&middot; {len(tactics)} tactics &middot; {len(benches)} suites</div>')
+        parts.append(f'<div class="spanline">toolchains {html.escape(span)} &middot; '
+                     f'{len(tactics)} tactics &middot; {len(benches)} suites</div>')
     parts.append('</header>')
 
     # ---- at-a-glance overview: suites + overall standings ----
