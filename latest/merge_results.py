@@ -277,12 +277,17 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
                 color, glyph = STATUS_STYLE.get(st, ("#f87171", "✗"))
                 label = f"{time_s} ms" if (st == "OK" and str(time_s).isdigit()) else st
                 if st == "ENV":
-                    msg = errors.get(tac, {}).get((bench, thm))
-                    tip = f"ENV — {msg}" if msg else "ENV — statement did not elaborate on this toolchain"
+                    info = errors.get(tac, {}).get((bench, thm)) or "statement did not elaborate on this toolchain"
+                elif st == "OK":
+                    info = f"solved in {time_s} ms" if str(time_s).isdigit() else "solved"
+                elif st == "TIMEOUT":
+                    info = "timed out"
                 else:
-                    tip = st
-                parts.append(f'<td class="cell mono" style="color:{color}" title="{html.escape(tip)}">'
-                             f'{glyph} {html.escape(label)}</td>')
+                    info = "tactic did not close the goal"
+                parts.append(f'<td class="cell mono" style="color:{color}" '
+                             f'data-thm="{html.escape(thm)}" data-tac="{html.escape(tac)}" '
+                             f'data-st="{html.escape(st)}" data-info="{html.escape(info)}" '
+                             f'title="{html.escape(info)}">{glyph} {html.escape(label)}</td>')
             parts.append('</tr>')
         parts.append('</table></div>')
 
@@ -299,8 +304,11 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
                  'lambda term. It is a translator gap, not a solver limitation — cvc5 itself supports '
                  'higher-order reasoning and lambdas. It accounts for several STG4 failures.</li>')
     parts.append('</ul>')
+    parts.append('<p class="hint">Tip: click any cell for its status and (for ENV) the exact Lean error.</p>')
 
     parts.append('</div>')
+    parts.append('<div id="cellpop"></div>')
+    parts.append(POPOVER_JS)
     return "\n".join(parts)
 
 
@@ -347,12 +355,43 @@ td{font-variant-numeric:tabular-nums}
  letter-spacing:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .matrix .thm{position:sticky;left:0;background:var(--bg);max-width:280px;overflow:hidden;
  text-overflow:ellipsis;box-shadow:1px 0 0 var(--bd)}
-.cell{white-space:nowrap}
+.cell{white-space:nowrap;cursor:pointer}
 .caveats{color:var(--dim);max-width:78ch}.caveats li{margin:9px 0}.caveats b{color:var(--tx)}
+.hint{color:var(--dim);font-size:.8rem;margin-top:18px}
 code{background:rgba(148,163,199,.12);padding:1px 5px;border-radius:4px;font-size:.85em;
  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 tr:hover td{background:rgba(148,163,199,.05)}
+#cellpop{position:fixed;z-index:60;max-width:380px;display:none;background:var(--panel);
+ border:1px solid var(--bd);border-radius:8px;padding:12px 14px;box-shadow:0 10px 34px rgba(0,0,0,.55)}
+#cellpop .pl{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.08em}
+#cellpop .pt{font-weight:700;font-size:.92rem;margin-top:2px;word-break:break-word}
+#cellpop .pst{margin-top:7px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+#cellpop .pm{margin-top:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;
+ color:var(--tx);white-space:pre-wrap;word-break:break-word;line-height:1.5}
 </style>"""
+
+POPOVER_JS = """<script>
+(function(){
+  var pop=document.getElementById('cellpop');
+  var COL={OK:'#4ade80',TIMEOUT:'#fbbf24',ENV:'#60a5fa',FAIL:'#f87171'};
+  pop.innerHTML='<div class="pl"></div><div class="pt"></div><div class="pst"></div><div class="pm"></div>';
+  document.addEventListener('click',function(e){
+    var td=e.target.closest?e.target.closest('td.cell'):null;
+    if(!td){pop.style.display='none';return;}
+    pop.querySelector('.pl').textContent=td.dataset.tac||'';
+    pop.querySelector('.pt').textContent=td.dataset.thm||'';
+    var ps=pop.querySelector('.pst');ps.textContent=td.dataset.st||'';
+    ps.style.color=COL[td.dataset.st]||'#f87171';
+    pop.querySelector('.pm').textContent=td.dataset.info||'';
+    pop.style.display='block';
+    var r=td.getBoundingClientRect(),pw=pop.offsetWidth,ph=pop.offsetHeight;
+    var x=Math.min(r.left,window.innerWidth-pw-12),y=r.bottom+8;
+    if(y+ph>window.innerHeight)y=r.top-ph-8;
+    pop.style.left=Math.max(8,x)+'px';pop.style.top=Math.max(8,y)+'px';
+    e.stopPropagation();
+  });
+})();
+</script>"""
 
 
 def emit_markdown(benches: dict, tactics: list, man: dict, report_url: str = "") -> str:
