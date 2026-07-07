@@ -62,37 +62,38 @@ def discover(results: Path):
     tactics_seen: list = []
     errors: dict = {}
     for tool_dir in sorted(p for p in results.iterdir() if p.is_dir() and p.name != "merged"):
-        dir_tactic = None
+        dir_tactics: list = []
         for csv_path in sorted(tool_dir.glob("*_results.csv")):
             bench = csv_path.stem.replace("_results", "")
             with open(csv_path, newline="", encoding="utf-8") as f:
                 rows = list(csv.DictReader(f))
             if not rows:
                 continue
-            # single-tactic CSV: find the "<tactic>_status" column
-            tactic = next((k[:-len("_status")] for k in rows[0] if k.endswith("_status")), None)
-            if tactic is None:
-                continue
-            dir_tactic = tactic
-            if tactic not in tactics_seen:
-                tactics_seen.append(tactic)
-            b = benches.setdefault(bench, {})
-            t = b.setdefault(tactic, {})
-            for r in rows:
-                thm = r.get("Theorem", "")
-                t[thm] = (
-                    r.get(f"{tactic}_time", ""),
-                    r.get(f"{tactic}_status", "FAIL"),
-                    r.get("Statement", ""),
-                )
-        # ENV-error sidecar for this tool: benchmark<TAB>theorem<TAB>message
+            # a project may run several tactics -> one CSV with several "<tactic>_status"
+            # columns; surface every one (not just the first).
+            csv_tactics = [k[: -len("_status")] for k in rows[0] if k.endswith("_status")]
+            for tactic in csv_tactics:
+                if tactic not in dir_tactics:
+                    dir_tactics.append(tactic)
+                if tactic not in tactics_seen:
+                    tactics_seen.append(tactic)
+                t = benches.setdefault(bench, {}).setdefault(tactic, {})
+                for r in rows:
+                    t[r.get("Theorem", "")] = (
+                        r.get(f"{tactic}_time", ""),
+                        r.get(f"{tactic}_status", "FAIL"),
+                        r.get("Statement", ""),
+                    )
+        # ENV-error sidecar for this tool applies to every tactic in the project
+        # (a statement that fails to elaborate does so regardless of tactic).
         errfile = tool_dir / "env_errors.tsv"
-        if dir_tactic and errfile.exists():
-            emap = errors.setdefault(dir_tactic, {})
+        if dir_tactics and errfile.exists():
+            emaps = [errors.setdefault(t, {}) for t in dir_tactics]
             for line in errfile.read_text(encoding="utf-8").splitlines():
                 parts = line.split("\t", 2)
                 if len(parts) == 3:
-                    emap[(parts[0], parts[1])] = parts[2]
+                    for emap in emaps:
+                        emap[(parts[0], parts[1])] = parts[2]
     return benches, tactics_seen, errors
 
 
