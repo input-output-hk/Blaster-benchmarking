@@ -23,7 +23,8 @@ import sys
 from pathlib import Path
 
 # Home tactic first, then the rest in a stable order.
-TACTIC_ORDER = ["blaster", "smt +model", "auto", "aesop", "hammer"]
+TACTIC_ORDER = ["blaster", "blaster (only-optimize: 1)", "smt +model", "auto", "aesop",
+                "hammer", "omega", "grind", "simp"]
 
 # Short descriptions for known benchmark suites (only ones we can state accurately).
 SUITE_DESC = {

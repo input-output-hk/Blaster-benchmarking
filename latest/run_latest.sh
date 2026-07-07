@@ -28,7 +28,7 @@ TIMEOUT="${TIMEOUT:-20}"
 # --- result caching ---
 # Bump CACHE_VERSION whenever the harness's test generation changes in a way that
 # would alter results, to invalidate every cached entry.
-CACHE_VERSION="2"   # bumped: results now include env_errors.tsv (ENV tooltips)
+CACHE_VERSION="3"   # v2: env_errors.tsv; v3: load cvc5 FFI dylib so smt actually runs
 CACHE_DIR="${RESULTS_CACHE:-$HERE/results_cache}"
 NO_CACHE="${NO_CACHE:-0}"
 
@@ -54,28 +54,40 @@ resolve_commit() {
     echo "${line:0:9}"
 }
 
-# Cache key for a tool's results.
-cache_key() {  # tool commit toolchain tactic
+# Cache key for a project's results (keyed on the whole tactic set, so adding a
+# tactic to a project invalidates it).
+cache_key() {  # dir commit toolchain tactics
     printf '%s|%s|%s|%s|%s|%s' "$1" "$2" "$3" "$4" "$BENCH_HASH" "$CACHE_VERSION" | hash_stdin
 }
 
-# tool table: dir | require-name | git-url | branch | tactic | build-module | import-override
+# Newest STABLE (non-rc) mathlib release tag, e.g. v4.31.0. Drives the baselines
+# project so the built-in tactics track the latest Lean 4 release automatically.
+latest_stable_mathlib_tag() {
+    git ls-remote --tags https://github.com/leanprover-community/mathlib4 2>/dev/null \
+      | grep -oE 'v4\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+}
+
+# tool table: dir | require-name | git-url | branch | tactics(;) | build-module | import-overrides(;)
 #   dir             filesystem dir + results subdir (lowercase)
 #   require-name    Lean package name in the lakefile AND lake-manifest (case matters:
 #                   LeanHammer's package is "Hammer"; Lean-blaster's main renamed
-#                   its package Solver -> Blaster)
-#   build-module    the exact module the benchmark imports, so we build precisely
-#                   what `lake env lean` will need
-#   import-override (optional) tactic import to use instead of benchmark_config.sh's
-#                   default — needed when the latest branch renamed its module
-#                   namespace (blaster: Solver.Command.Tactic -> Blaster.Command.Tactic)
-# (toolchain is fetched live from the branch, implementing "track moving branch")
+#                   its package Solver -> Blaster). Empty => repo-less project.
+#   git-url/branch  empty => repo-less "baselines" project: requires only mathlib at
+#                   the latest stable tag (toolchain tracked live from that tag).
+#   tactics         ';'-separated list run in this one project (the harness supports
+#                   multiple tactics per project; blaster runs two variants here).
+#   build-module    module the benchmark imports, built so `lake env lean` finds it;
+#                   empty => nothing to build (built-in tactics need only mathlib).
+#   import-overrides ';'-separated, aligned with tactics; entry may be empty. Needed
+#                   when a branch renamed its module namespace (blaster: Solver.* -> Blaster.*).
+# (repo-backed toolchains are fetched live from the branch -> "track moving branch")
 TOOLS=(
-    "blaster|Blaster|https://github.com/input-output-hk/Lean-blaster|main|blaster|Blaster.Command.Tactic|Blaster.Command.Tactic"
-    "smt|smt|https://github.com/ufmg-smite/lean-smt.git|main|smt +model|Smt"
-    "hammer|Hammer|https://github.com/JOSHCLUNE/LeanHammer.git|main|hammer|Hammer"
-    "auto|auto|https://github.com/leanprover-community/lean-auto.git|main|auto|Auto.Tactic"
-    "aesop|aesop|https://github.com/leanprover-community/aesop|master|aesop|Aesop"
+    "blaster|Blaster|https://github.com/input-output-hk/Lean-blaster|main|blaster;blaster (only-optimize: 1)|Blaster.Command.Tactic|Blaster.Command.Tactic;Blaster.Command.Tactic"
+    "smt|smt|https://github.com/ufmg-smite/lean-smt.git|main|smt +model|Smt|Smt"
+    "hammer|Hammer|https://github.com/JOSHCLUNE/LeanHammer.git|main|hammer|Hammer|"
+    "auto|auto|https://github.com/leanprover-community/lean-auto.git|main|auto|Auto.Tactic|"
+    "aesop|aesop|https://github.com/leanprover-community/aesop|master|aesop|Aesop|"
+    "baselines||||omega;grind;simp||"
 )
 
 # Package name must be a valid Lean identifier
@@ -90,50 +102,57 @@ raw_toolchain_url() {
 }
 
 scaffold() {
-    local dir="$1" reqname="$2" url="$3" branch="$4" tactic="$5" import_override="${6:-}"
+    local dir="$1" reqname="$2" url="$3" branch="$4" tactics_str="$5" imports_str="$6"
     local proj="$HERE/projects/$dir"
     mkdir -p "$proj"
 
-    # 1. toolchain: fetch live from the tool's branch
-    local tc
-    tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
-    if [[ -z "$tc" ]]; then
-        echo "  ! could not fetch toolchain for $dir from $branch" >&2
-        return 1
+    # 1. toolchain + mathlib requirement
+    local tc mathlib_req
+    if [[ -n "$url" ]]; then
+        # repo-backed: toolchain fetched live from the tool's branch; mathlib matches it
+        tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+        mathlib_req='def leanVersion : String := s!"v{Lean.versionString}"'$'\n''require "leanprover-community" / mathlib @ git leanVersion'
+    else
+        # repo-less baselines: latest stable mathlib tag drives the toolchain
+        local tag; tag="$(latest_stable_mathlib_tag)"
+        [[ -z "$tag" ]] && { echo "  ! could not resolve latest mathlib tag" >&2; return 1; }
+        tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$tag/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
+        mathlib_req="require \"leanprover-community\" / mathlib @ git \"$tag\""
     fi
+    [[ -z "$tc" ]] && { echo "  ! could not fetch toolchain for $dir" >&2; return 1; }
     printf '%s\n' "$tc" > "$proj/lean-toolchain"
 
-    # 2. lakefile: require the tool@branch + mathlib matching this toolchain
-    cat > "$proj/lakefile.lean" <<EOF
-import Lake
-open Lake DSL
-
-package $(pkg_name "$dir") where
-
--- Tactic under test: latest default branch (tracked live)
-require ${reqname} from git "${url}" @ "${branch}"
-
--- Mathlib pinned to the tag matching this project's toolchain (STG4 imports Mathlib)
-def leanVersion : String := s!"v{Lean.versionString}"
-require "leanprover-community" / mathlib @ git leanVersion
-EOF
+    # 2. lakefile: the tool (if any) + mathlib (STG4 imports Mathlib)
+    {
+        echo "import Lake"
+        echo "open Lake DSL"
+        echo ""
+        echo "package $(pkg_name "$dir") where"
+        echo ""
+        [[ -n "$url" ]] && echo "require ${reqname} from git \"${url}\" @ \"${branch}\"" && echo ""
+        echo "$mathlib_req"
+    } > "$proj/lakefile.lean"
 
     # 3. shared benchmark sources
     ln -sfn ../../../BlasterBenchmarks "$proj/BlasterBenchmarks"
 
-    # 4. per-tool benchmark config (single tactic, central results dir)
-    cat > "$proj/config.sh" <<EOF
-#!/usr/bin/env bash
-# Generated by run_latest.sh - per-tool benchmark override.
-TACTICS=("${tactic}")
-OUTPUT_DIR="${RESULTS}/${dir}"
-TEMP_DIR="benchmark_temp"
-EOF
-    # Override the tactic's import when the latest branch renamed its module
-    # namespace (TACTIC_IMPORTS is a -A array declared in benchmark_config.sh).
-    if [[ -n "$import_override" ]]; then
-        printf 'TACTIC_IMPORTS["%s"]="%s"\n' "$tactic" "$import_override" >> "$proj/config.sh"
-    fi
+    # 4. per-project config: the tactic list + aligned import overrides
+    local oldifs="$IFS"; IFS=';'; local -a tacs=($tactics_str) imps=($imports_str); IFS="$oldifs"
+    {
+        echo '#!/usr/bin/env bash'
+        echo '# Generated by run_latest.sh'
+        printf 'TACTICS=('
+        local t; for t in "${tacs[@]}"; do printf '"%s" ' "$t"; done
+        echo ')'
+        echo "OUTPUT_DIR=\"${RESULTS}/${dir}\""
+        echo 'TEMP_DIR="benchmark_temp"'
+        # import overrides (TACTIC_IMPORTS is a -A array declared in benchmark_config.sh)
+        local i
+        for i in "${!tacs[@]}"; do
+            local imp="${imps[$i]:-}"
+            [[ -n "$imp" ]] && printf 'TACTIC_IMPORTS["%s"]="%s"\n' "${tacs[$i]}" "$imp"
+        done
+    } > "$proj/config.sh"
     return 0
 }
 
@@ -141,27 +160,46 @@ EOF
 # tool can be re-run without discarding the others)
 [[ -f "$MANIFEST" ]] || printf 'tool\ttoolchain\tbranch\tresolved_commit\ttactic\tbuild_status\n' > "$MANIFEST"
 
-# Append a manifest row, replacing any existing row for the same tool first.
+# Append a manifest row (tool toolchain branch commit tactic status), replacing any
+# existing row for the same TACTIC first (a project may contribute several tactics).
 # Uses awk (portable) rather than `grep -P`, which BSD/macOS grep lacks.
 manifest_put() {
-    local tool="$1"; shift
-    local tmp="$MANIFEST.tmp"
-    awk -F'\t' -v t="$tool" 'NR==1 || $1!=t' "$MANIFEST" > "$tmp" && mv "$tmp" "$MANIFEST"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$tool" "$@" >> "$MANIFEST"
+    local tac="$5" tmp="$MANIFEST.tmp"
+    awk -F'\t' -v t="$tac" 'NR==1 || $5!=t' "$MANIFEST" > "$tmp" && mv "$tmp" "$MANIFEST"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >> "$MANIFEST"
+}
+
+# Write one manifest row per tactic in the current project (uses run_tool's locals
+# via bash dynamic scope: dir, tc, branch_label, commit_label, tactics_str).
+put_rows() {  # status
+    local status="$1" t oldifs="$IFS"
+    IFS=';'; local -a tacs=($tactics_str); IFS="$oldifs"
+    for t in "${tacs[@]}"; do
+        manifest_put "$dir" "$tc" "$branch_label" "$commit_label" "$t" "$status"
+    done
 }
 
 run_tool() {
     local row="$1"
-    IFS='|' read -r dir reqname url branch tactic module import_override <<< "$row"
+    IFS='|' read -r dir reqname url branch tactics_str module imports_str <<< "$row"
     local proj="$HERE/projects/$dir"
-    echo "==================== $dir ($branch) ===================="
+    echo "==================== $dir (${branch:-latest stable}) ===================="
 
     # --- cheap identity resolution (no clone / no build) for the cache key ---
-    local commit tc key="" cdir=""
-    commit="$(resolve_commit "$url" "$branch")"
-    tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+    # repo-backed: branch HEAD commit + branch toolchain.
+    # repo-less baselines: latest stable mathlib tag is the identity/toolchain.
+    local commit tc key="" cdir="" branch_label commit_label
+    if [[ -n "$url" ]]; then
+        commit="$(resolve_commit "$url" "$branch")"
+        tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+        branch_label="$branch"; commit_label="$commit"
+    else
+        commit="$(latest_stable_mathlib_tag)"   # e.g. v4.31.0 — drives cache identity
+        [[ -n "$commit" ]] && tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$commit/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
+        branch_label="stable"; commit_label="(core)"   # built-ins: no repo commit
+    fi
     if [[ -n "$commit" && -n "$tc" ]]; then
-        key="$(cache_key "$dir" "$commit" "$tc" "$tactic")"
+        key="$(cache_key "$dir" "$commit" "$tc" "$tactics_str")"
         cdir="$CACHE_DIR/$dir/$key"
     fi
 
@@ -171,51 +209,63 @@ run_tool() {
         mkdir -p "$RESULTS/$dir"
         cp "$cdir/"*_results.csv "$RESULTS/$dir/"
         [[ -f "$cdir/env_errors.tsv" ]] && cp "$cdir/env_errors.tsv" "$RESULTS/$dir/"
-        manifest_put "$dir" "$tc" "$branch" "$commit" "$tactic" "CACHED"
+        put_rows "CACHED"
         echo "  done (cached): results in $RESULTS/$dir"
         return
     fi
     [[ "$NO_CACHE" == "1" ]] && echo "  NO_CACHE=1 - forcing rebuild" \
                              || echo "  cache miss (${commit:-?} @ ${tc:-?}) - building"
 
-    scaffold "$dir" "$reqname" "$url" "$branch" "$tactic" "$import_override" || {
-        manifest_put "$dir" "?" "$branch" "?" "$tactic" "SCAFFOLD_FAIL"
+    scaffold "$dir" "$reqname" "$url" "$branch" "$tactics_str" "$imports_str" || {
+        put_rows "SCAFFOLD_FAIL"
         return
     }
     [[ -z "$tc" ]] && tc="$(tr -d '[:space:]' < "$proj/lean-toolchain")"
     echo "  toolchain: $tc"
 
     ( cd "$proj" || exit 1
-      echo "  lake update...";              lake update           > update.log 2>&1
-      echo "  cache get...";                lake exe cache get     > cache.log  2>&1 || true
-      echo "  build ${module}...";          lake build "${module}" > build.log  2>&1
+      echo "  lake update..."; lake update       > update.log 2>&1
+      echo "  cache get...";   lake exe cache get > cache.log  2>&1 || true
+      if [[ -n "$module" ]]; then
+        echo "  build ${module}..."; lake build "${module}" > build.log 2>&1
+      else
+        echo "  (built-in tactics: no tool build)"
+      fi
     )
     local build_rc=$?
 
-    # authoritative resolved commit from the built manifest (falls back to ls-remote)
-    if [[ -z "$commit" ]]; then
+    # authoritative resolved commit from the built manifest (repo-backed only)
+    if [[ -n "$url" && ( -z "$commit" || "$commit" == "?" ) ]]; then
         commit="$(python3 -c "import json
 try:
     d=json.load(open('$proj/lake-manifest.json'))
     print(next((p['rev'][:9] for p in d['packages'] if p.get('name')=='$reqname'),'?'))
 except Exception: print('?')" 2>/dev/null)"
-        commit="${commit:-?}"
+        commit="${commit:-?}"; commit_label="$commit"
     fi
 
     if [[ $build_rc -ne 0 ]]; then
         echo "  BUILD FAILED (see $proj/build.log)"
-        manifest_put "$dir" "$tc" "$branch" "$commit" "$tactic" "BUILD_FAIL"
+        put_rows "BUILD_FAIL"
         return   # failures are never cached, so they retry next run
     fi
 
-    echo "  running benchmark..."
-    ( cd "$proj" && QUIET=1 "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" > bench.log 2>&1 )
-    manifest_put "$dir" "$tc" "$branch" "$commit" "$tactic" "OK"
+    # Some tactics link native FFI (lean-smt -> cvc5) that the Lean interpreter used
+    # by `lake env lean` will not resolve unless the shared lib is explicitly loaded.
+    # Pass any cvc5 FFI lib built in this project as --load-dynlib.
+    local extra="" lib
+    for lib in "$proj"/.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.{dylib,so}; do
+        [[ -f "$lib" ]] && extra="$extra --load-dynlib=$lib"
+    done
+
+    echo "  running benchmark...${extra:+ (loading cvc5 FFI)}"
+    ( cd "$proj" && LEAN_EXTRA_ARGS="$extra" QUIET=1 "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" > bench.log 2>&1 )
+    put_rows "OK"
     echo "  done: results in $RESULTS/$dir"
 
     # --- save results to cache under the identity key ---
     if [[ -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
-        [[ -z "$key" ]] && cdir="$CACHE_DIR/$dir/$(cache_key "$dir" "$commit" "$tc" "$tactic")"
+        [[ -z "$key" ]] && cdir="$CACHE_DIR/$dir/$(cache_key "$dir" "$commit" "$tc" "$tactics_str")"
         mkdir -p "$cdir"
         cp "$RESULTS/$dir/"*_results.csv "$cdir/" 2>/dev/null && echo "  cached results for reuse"
         [[ -f "$RESULTS/$dir/env_errors.tsv" ]] && cp "$RESULTS/$dir/env_errors.tsv" "$cdir/"
