@@ -32,6 +32,7 @@ SUITE_DESC = {
     "STG4": "Lean Set Theory Game",
     "ITL4": "Introduction to Logic",
     "MiniF2F": "Competition math (integer/number-theory subset)",
+    "Verina": "Verified-programming specs (Verina, basic)",
 }
 STATUS_RANK = {"OK": 0, "TIMEOUT": 1, "ENV": 2, "FAIL": 3}
 STATUS_STYLE = {

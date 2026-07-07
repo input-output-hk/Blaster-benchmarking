@@ -203,13 +203,17 @@ archive_previous_results() {
 }
 
 # Parse benchmark specification
-# Args: spec_string
-# Returns: import_path file_path display_name timeout (space-separated)
+# Args: spec_string  (import:file:display:timeout[:mode])
+# Returns: import_path file_path display_name timeout mode (space-separated)
+#   mode = "stmt" (default; one file, many theorems, statement extracted) or
+#          "taskdir" (file_path is a directory of one-theorem task files whose
+#          spec proof is swapped for the tactic — for verification suites)
 parse_benchmark_spec() {
     local spec="$1"
-    IFS=':' read -r import_path file_path display_name timeout <<< "$spec"
+    IFS=':' read -r import_path file_path display_name timeout mode <<< "$spec"
     timeout="${timeout:-$TIMEOUT}"
-    echo "$import_path $file_path $display_name $timeout"
+    mode="${mode:-stmt}"
+    echo "$import_path $file_path $display_name $timeout $mode"
 }
 
 # Format time with color based on threshold

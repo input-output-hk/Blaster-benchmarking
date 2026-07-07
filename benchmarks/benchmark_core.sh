@@ -157,10 +157,117 @@ process_theorem() {
 
 # Run benchmarks for a single benchmark file
 # Args: spec
+# Emit a task file with the spec theorem's proof (everything from ':= by') replaced
+# by ':= by <replacement>', dropping the original proof body.
+# Args: task_file replacement   (replacement is a tactic, or "sorry" for env-check)
+swap_proof() {
+    awk -v tac="$2" '
+        swapped { next }
+        /^theorem / { seen=1 }
+        seen && index($0, ":= by") { print substr($0, 1, index($0, ":= by")+4) " " tac; swapped=1; next }
+        { print }
+    ' "$1"
+}
+
+# Run a single tactic on a one-theorem task file by swapping its proof for the
+# tactic (verification-suite mode). Returns time_ms|status.
+# Args: display_name task_file task_name tactic file_hash timeout
+test_task_file() {
+    local display_name="$1" task_file="$2" task_name="$3" tactic="$4"
+    local file_hash="$5" timeout="${6:-$TIMEOUT}"
+
+    local cache_key=$(generate_cache_key "$display_name" "$task_name" "$tactic" "$file_hash")
+    local cached=$(check_cache "$cache_key")
+    [[ -n "$cached" ]] && { echo "$cached"; return 0; }
+    [[ $DRY_RUN -eq 1 ]] && { echo "0|DRY_RUN"; return 0; }
+
+    local tactic_import=$(get_tactic_import "$tactic")
+    local safe_tactic="${tactic//[^a-zA-Z0-9_-]/_}"
+    local test_file="$TEMP_DIR/Task_${display_name}_${task_name}_${safe_tactic}.lean"
+    # Prepend the tactic import (if any), then the whole task file with the spec
+    # theorem's proof (everything from ':= by') replaced by the chosen tactic.
+    local proof_marker=':= by'
+    {
+        [[ -n "$tactic_import" ]] && echo "import $tactic_import"
+        swap_proof "$task_file" "$tactic"
+    } > "$test_file"
+
+    local start=$(date +%s%N)
+    local error_log="$TEMP_DIR/error_${display_name}_${task_name}_${safe_tactic}.log"
+    local result
+    if timeout "${timeout}s" lake env lean ${LEAN_EXTRA_ARGS:-} "$test_file" > "$error_log" 2>&1; then
+        result="$(( ($(date +%s%N) - start) / 1000000 ))|OK"
+    else
+        local ec=$?
+        if [[ $ec -eq 124 ]]; then
+            result="timeout|TIMEOUT"
+        else
+            # ENV vs FAIL: does the file elaborate at all (proof = sorry)?
+            local env_key=$(generate_cache_key "$display_name" "$task_name" "__ENV__" "$file_hash")
+            local env_status=$(check_cache "$env_key")
+            if [[ -z "$env_status" ]]; then
+                local ef="$TEMP_DIR/EnvTask_${display_name}_${task_name}.lean"
+                swap_proof "$task_file" "sorry" > "$ef"
+                local etlog="$TEMP_DIR/envtask_${display_name}_${task_name}.log"
+                if timeout "${timeout}s" lake env lean ${LEAN_EXTRA_ARGS:-} "$ef" > "$etlog" 2>&1; then
+                    env_status="OK"
+                else
+                    env_status="ENV"
+                    local emsg=$(grep -m1 'error:' "$etlog" 2>/dev/null \
+                                 | sed -E 's/^[^ ]+:[0-9]+:[0-9]+: *//' | tr '\t\r\n' '   ' | cut -c1-300)
+                    [[ -z "$emsg" ]] && emsg="statement failed to elaborate"
+                    printf '%s\t%s\t%s\n' "$display_name" "$task_name" "$emsg" >> "$OUTPUT_DIR/env_errors.tsv"
+                fi
+                store_cache "$env_key" "$env_status"
+            fi
+            [[ "$env_status" == "ENV" ]] && result="env|ENV" || result="fail|FAIL"
+        fi
+    fi
+    store_cache "$cache_key" "$result"
+    echo "$result"
+}
+
+# Run a "taskdir" verification suite: each *.lean under the dir is one task whose
+# spec proof is swapped for each tactic.
+run_task_dir_benchmark() {
+    local dir="$1" display_name="$2" timeout="$3"
+    local csv="$OUTPUT_DIR/${display_name}_results.csv"
+    generate_csv_header > "$csv"
+    local files=("$dir"/*.lean)
+    [[ -e "${files[0]}" ]] || { log_warning "No task files in $dir"; return 1; }
+    log_info "Found ${#files[@]} tasks in $display_name"
+    local current=0
+    for tf in "${files[@]}"; do
+        current=$((current+1))
+        local task_name=$(basename "$tf" .lean)
+        local file_hash=$(get_file_hash "$tf")
+        [[ $QUIET -eq 0 ]] && echo -e "${BLUE}[$current/${#files[@]}]${NC} ${YELLOW}$task_name${NC}"
+        local results=""
+        for tactic in "${TACTICS[@]}"; do
+            local r=$(test_task_file "$display_name" "$tf" "$task_name" "$tactic" "$file_hash" "$timeout")
+            IFS='|' read -r time status <<< "$r"
+            results="${results},${time},${status}"
+            [[ $QUIET -eq 0 ]] && echo -e "    ${tactic}: ${status} ${time}" >&2
+        done
+        echo "$display_name,$task_name,\"$task_name\"$results" >> "$csv"
+    done
+    log_success "Completed $display_name: ${#files[@]} tasks processed"
+}
+
 run_benchmark_file() {
     local spec="$1"
-    read -r import_path file_path display_name timeout <<< "$(parse_benchmark_spec "$spec")"
-    
+    read -r import_path file_path display_name timeout mode <<< "$(parse_benchmark_spec "$spec")"
+
+    if [[ "$mode" == "taskdir" ]]; then
+        if [[ ! -d "$file_path" ]]; then
+            log_warning "Skipping $display_name: task dir not found ($file_path)"
+            return 1
+        fi
+        log_info "Running benchmark: $display_name (taskdir)"
+        run_task_dir_benchmark "$file_path" "$display_name" "$timeout"
+        return $?
+    fi
+
     if [[ ! -f "$file_path" ]]; then
         log_warning "Skipping $display_name: file not found ($file_path)"
         return 1
@@ -448,7 +555,7 @@ test_single() {
     local target_tactic="$3"
     
     for spec in "${BENCHMARK_FILES[@]}"; do
-        read -r import_path file_path display_name timeout <<< "$(parse_benchmark_spec "$spec")"
+        read -r import_path file_path display_name timeout _mode <<< "$(parse_benchmark_spec "$spec")"
         
         [[ "$display_name" != "$target_benchmark" ]] && continue
         

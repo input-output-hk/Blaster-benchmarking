@@ -138,7 +138,7 @@ generate_json_output() {
     # Build args: csv_file:display_name:timeout pairs
     local csv_specs=()
     for spec in "${BENCHMARK_FILES[@]}"; do
-        read -r _ file_path display_name timeout <<< "$(parse_benchmark_spec "$spec")"
+        read -r _ file_path display_name timeout _mode <<< "$(parse_benchmark_spec "$spec")"
         local csv="$OUTPUT_DIR/${display_name}_results.csv"
         [[ -f "$csv" ]] && csv_specs+=("${csv}:${display_name}:${timeout}")
     done
