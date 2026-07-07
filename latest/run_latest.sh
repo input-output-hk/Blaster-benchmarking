@@ -28,7 +28,7 @@ TIMEOUT="${TIMEOUT:-20}"
 # --- result caching ---
 # Bump CACHE_VERSION whenever the harness's test generation changes in a way that
 # would alter results, to invalidate every cached entry.
-CACHE_VERSION="1"
+CACHE_VERSION="2"   # bumped: results now include env_errors.tsv (ENV tooltips)
 CACHE_DIR="${RESULTS_CACHE:-$HERE/results_cache}"
 NO_CACHE="${NO_CACHE:-0}"
 
@@ -170,6 +170,7 @@ run_tool() {
         echo "  cache HIT ($commit @ $tc) - reusing results, skipping build"
         mkdir -p "$RESULTS/$dir"
         cp "$cdir/"*_results.csv "$RESULTS/$dir/"
+        [[ -f "$cdir/env_errors.tsv" ]] && cp "$cdir/env_errors.tsv" "$RESULTS/$dir/"
         manifest_put "$dir" "$tc" "$branch" "$commit" "$tactic" "CACHED"
         echo "  done (cached): results in $RESULTS/$dir"
         return
@@ -217,6 +218,7 @@ except Exception: print('?')" 2>/dev/null)"
         [[ -z "$key" ]] && cdir="$CACHE_DIR/$dir/$(cache_key "$dir" "$commit" "$tc" "$tactic")"
         mkdir -p "$cdir"
         cp "$RESULTS/$dir/"*_results.csv "$cdir/" 2>/dev/null && echo "  cached results for reuse"
+        [[ -f "$RESULTS/$dir/env_errors.tsv" ]] && cp "$RESULTS/$dir/env_errors.tsv" "$cdir/"
     fi
 }
 
