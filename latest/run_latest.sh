@@ -86,7 +86,7 @@ TOOLS=(
     "smt|smt|https://github.com/ufmg-smite/lean-smt.git|main|smt +model|Smt|Smt"
     "hammer|Hammer|https://github.com/JOSHCLUNE/LeanHammer.git|main|hammer|Hammer|"
     "auto|auto|https://github.com/leanprover-community/lean-auto.git|main|auto|Auto.Tactic|"
-    "aesop|aesop|https://github.com/leanprover-community/aesop|master|aesop|Aesop|"
+    "aesop|aesop|||aesop|Aesop|"
     "baselines||||omega;grind;simp||"
 )
 
@@ -187,7 +187,11 @@ run_tool() {
 
     # --- cheap identity resolution (no clone / no build) for the cache key ---
     # repo-backed: branch HEAD commit + branch toolchain.
-    # repo-less baselines: latest stable mathlib tag is the identity/toolchain.
+    # repo-less: latest stable mathlib tag is the identity/toolchain. Two flavours:
+    #   reqname empty  -> built-in tactics (omega/grind/simp), commit label "(core)"
+    #   reqname set    -> a mathlib-bundled package (aesop; forcing aesop@master would
+    #                     break mathlib's cached build since aesop is a mathlib dep),
+    #                     so we benchmark the version mathlib ships. Label "(via mathlib)".
     local commit tc key="" cdir="" branch_label commit_label
     if [[ -n "$url" ]]; then
         commit="$(resolve_commit "$url" "$branch")"
@@ -196,7 +200,8 @@ run_tool() {
     else
         commit="$(latest_stable_mathlib_tag)"   # e.g. v4.31.0 — drives cache identity
         [[ -n "$commit" ]] && tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$commit/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
-        branch_label="stable"; commit_label="(core)"   # built-ins: no repo commit
+        branch_label="stable"
+        [[ -n "$reqname" ]] && commit_label="(via mathlib)" || commit_label="(core)"
     fi
     if [[ -n "$commit" && -n "$tc" ]]; then
         key="$(cache_key "$dir" "$commit" "$tc" "$tactics_str")"
