@@ -48,7 +48,7 @@ test_tactic() {
     local error_log="$TEMP_DIR/error_${benchmark_name}_${theorem_name}_${safe_tactic}.log"
     local result
 
-    if timeout "${timeout}s" lake env lean "$test_file" > "$error_log" 2>&1; then
+    if timeout "${timeout}s" lake env lean ${LEAN_EXTRA_ARGS:-} "$test_file" > "$error_log" 2>&1; then
         local elapsed=$(( ($(date +%s%N) - start) / 1000000 ))
         result="${elapsed}|OK"
     else
@@ -69,7 +69,7 @@ test_tactic() {
                     echo "example $statement := by sorry"
                 } > "$env_file"
                 local env_log="$TEMP_DIR/env_${benchmark_name}_${theorem_name}.log"
-                if timeout "${timeout}s" lake env lean "$env_file" > "$env_log" 2>&1; then
+                if timeout "${timeout}s" lake env lean ${LEAN_EXTRA_ARGS:-} "$env_file" > "$env_log" 2>&1; then
                     env_status="OK"
                 else
                     env_status="ENV"
@@ -281,7 +281,7 @@ test_tactic() {
     local error_log="$TEMP_DIR/error_${benchmark_name}_${theorem_name}_${tactic}_$$.log"
     local result
 
-    if timeout "${timeout}s" lake env lean "$test_file" > "$error_log" 2>&1; then
+    if timeout "${timeout}s" lake env lean ${LEAN_EXTRA_ARGS:-} "$test_file" > "$error_log" 2>&1; then
         local elapsed=$(( ($(date +%s%N) - start) / 1000000 ))
         result="${elapsed}|OK"
     else
