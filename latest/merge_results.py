@@ -53,10 +53,15 @@ def load_manifest(results: Path) -> dict:
 
 
 def discover(results: Path):
-    """Return {bench_name: {tactic: {theorem: (time,status,statement)}}} and tactic set."""
+    """Return (benches, tactic set, errors).
+    benches: {bench: {tactic: {theorem: (time,status,statement)}}}
+    errors:  {tactic: {(bench, theorem): message}} from each tool's env_errors.tsv
+    """
     benches: dict = {}
     tactics_seen: list = []
+    errors: dict = {}
     for tool_dir in sorted(p for p in results.iterdir() if p.is_dir() and p.name != "merged"):
+        dir_tactic = None
         for csv_path in sorted(tool_dir.glob("*_results.csv")):
             bench = csv_path.stem.replace("_results", "")
             with open(csv_path, newline="", encoding="utf-8") as f:
@@ -67,6 +72,7 @@ def discover(results: Path):
             tactic = next((k[:-len("_status")] for k in rows[0] if k.endswith("_status")), None)
             if tactic is None:
                 continue
+            dir_tactic = tactic
             if tactic not in tactics_seen:
                 tactics_seen.append(tactic)
             b = benches.setdefault(bench, {})
@@ -78,7 +84,15 @@ def discover(results: Path):
                     r.get(f"{tactic}_status", "FAIL"),
                     r.get("Statement", ""),
                 )
-    return benches, tactics_seen
+        # ENV-error sidecar for this tool: benchmark<TAB>theorem<TAB>message
+        errfile = tool_dir / "env_errors.tsv"
+        if dir_tactic and errfile.exists():
+            emap = errors.setdefault(dir_tactic, {})
+            for line in errfile.read_text(encoding="utf-8").splitlines():
+                parts = line.split("\t", 2)
+                if len(parts) == 3:
+                    emap[(parts[0], parts[1])] = parts[2]
+    return benches, tactics_seen, errors
 
 
 def ordered_tactics(seen: list) -> list:
@@ -142,7 +156,7 @@ def col_label(tac: str, man: dict) -> str:
             f'<div class="ver">{html.escape(tc)} · {html.escape(commit)}{cached}</div>{tag}')
 
 
-def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
+def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: dict) -> str:
     """Return a body-content fragment (style + markup), no document wrapper."""
     tcs = sorted({man[t].get("toolchain", "").replace("leanprover/lean4:", "")
                   for t in tactics if t in man} - {""})
@@ -260,7 +274,12 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict) -> str:
                 time_s, st = cell[0], cell[1]
                 color, glyph = STATUS_STYLE.get(st, ("#f87171", "✗"))
                 label = f"{time_s} ms" if (st == "OK" and str(time_s).isdigit()) else st
-                parts.append(f'<td class="cell mono" style="color:{color}" title="{html.escape(st)}">'
+                if st == "ENV":
+                    msg = errors.get(tac, {}).get((bench, thm))
+                    tip = f"ENV — {msg}" if msg else "ENV — statement did not elaborate on this toolchain"
+                else:
+                    tip = st
+                parts.append(f'<td class="cell mono" style="color:{color}" title="{html.escape(tip)}">'
                              f'{glyph} {html.escape(label)}</td>')
             parts.append('</tr>')
         parts.append('</table></div>')
@@ -386,12 +405,12 @@ def wrap_standalone(fragment: str) -> str:
 def main():
     results = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "results"
     man = load_manifest(results)
-    benches, seen = discover(results)
+    benches, seen, errors = discover(results)
     if not benches:
         print(f"No per-tool result CSVs found under {results}", file=sys.stderr)
         sys.exit(1)
     tactics = ordered_tactics(seen)
-    fragment = render_html(results, benches, tactics, man)
+    fragment = render_html(results, benches, tactics, man, errors)
     out_html = results / "report.html"
     out_html.write_text(wrap_standalone(fragment), encoding="utf-8")
     frag_html = results / "report.artifact.html"

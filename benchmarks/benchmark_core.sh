@@ -68,11 +68,19 @@ test_tactic() {
                     [[ -n "$context" ]] && echo "$context" && echo ""
                     echo "example $statement := by sorry"
                 } > "$env_file"
-                if timeout "${timeout}s" lake env lean "$env_file" \
-                        > "$TEMP_DIR/env_${benchmark_name}_${theorem_name}.log" 2>&1; then
+                local env_log="$TEMP_DIR/env_${benchmark_name}_${theorem_name}.log"
+                if timeout "${timeout}s" lake env lean "$env_file" > "$env_log" 2>&1; then
                     env_status="OK"
                 else
                     env_status="ENV"
+                    # Record the actual elaboration error (first `error:` line, with the
+                    # file:line:col prefix stripped) so the report can show it on hover.
+                    local emsg
+                    emsg=$(grep -m1 'error:' "$env_log" 2>/dev/null \
+                           | sed -E 's/^[^ ]+:[0-9]+:[0-9]+: *//' | tr '\t\r\n' '   ' | cut -c1-300)
+                    [[ -z "$emsg" ]] && emsg="statement failed to elaborate"
+                    printf '%s\t%s\t%s\n' "$benchmark_name" "$theorem_name" "$emsg" \
+                        >> "$OUTPUT_DIR/env_errors.tsv"
                 fi
                 store_cache "$env_cache_key" "$env_status"
             fi
@@ -413,7 +421,10 @@ WRAPPER_EOF2
 # Run all benchmarks
 run_benchmarks() {
     archive_previous_results
-    
+
+    # Fresh ENV-error sidecar for this run (appended to per-theorem in test_tactic).
+    rm -f "$OUTPUT_DIR/env_errors.tsv"
+
     log_info "Starting benchmark suite"
     log_info "Configuration:"
     log_info "  Timeout: ${TIMEOUT}s"
