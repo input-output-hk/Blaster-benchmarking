@@ -28,7 +28,7 @@ TIMEOUT="${TIMEOUT:-20}"
 # --- result caching ---
 # Bump CACHE_VERSION whenever the harness's test generation changes in a way that
 # would alter results, to invalidate every cached entry.
-CACHE_VERSION="3"   # v2: env_errors.tsv; v3: load cvc5 FFI dylib so smt actually runs
+CACHE_VERSION="4"   # v2: env_errors; v3: cvc5 dylib; v4: per-suite cache granularity
 CACHE_DIR="${RESULTS_CACHE:-$HERE/results_cache}"
 NO_CACHE="${NO_CACHE:-0}"
 
@@ -41,11 +41,22 @@ hash_stdin() {
     else cksum | tr -d ' \t'; fi
 }
 
-# Hash of the benchmark theorem sources (names + contents): changing any theorem
-# invalidates every tool's cache.
-BENCH_HASH="$({ find "$REPO_ROOT/BlasterBenchmarks" -name '*.lean' -type f | sort
-                find "$REPO_ROOT/BlasterBenchmarks" -name '*.lean' -type f | sort | xargs cat
-              } 2>/dev/null | hash_stdin)"
+# Benchmark suite definitions live in benchmark_config.sh (BENCHMARK_FILES); source
+# it so we can cache results PER SUITE (adding/editing one suite then only re-runs
+# that suite, not the whole set).
+source "$REPO_ROOT/benchmarks/benchmark_config.sh" 2>/dev/null || true
+
+# Content hash of a single suite (its .lean file, or every .lean under a taskdir).
+# Args: file_path mode   (mode = stmt | taskdir)
+suite_hash() {
+    local fp="$REPO_ROOT/$1" mode="$2"
+    if [[ "$mode" == "taskdir" ]]; then
+        { find "$fp" -name '*.lean' -type f | sort
+          find "$fp" -name '*.lean' -type f | sort | xargs cat; } 2>/dev/null | hash_stdin
+    else
+        hash_stdin < "$fp" 2>/dev/null
+    fi
+}
 
 # Resolve a branch's HEAD commit without cloning. Echoes short sha, or "" on failure.
 resolve_commit() {
@@ -54,10 +65,10 @@ resolve_commit() {
     echo "${line:0:9}"
 }
 
-# Cache key for a project's results (keyed on the whole tactic set, so adding a
-# tactic to a project invalidates it).
-cache_key() {  # dir commit toolchain tactics
-    printf '%s|%s|%s|%s|%s|%s' "$1" "$2" "$3" "$4" "$BENCH_HASH" "$CACHE_VERSION" | hash_stdin
+# Per-suite cache key: tool identity (dir+commit+toolchain+tactics) + that suite's
+# own content hash. Adding/editing one suite changes only its key.
+cache_key() {  # dir commit toolchain tactics suite_hash
+    printf '%s|%s|%s|%s|%s|%s' "$1" "$2" "$3" "$4" "$5" "$CACHE_VERSION" | hash_stdin
 }
 
 # Newest STABLE (non-rc) mathlib release tag, e.g. v4.31.0. Drives the baselines
@@ -185,96 +196,93 @@ run_tool() {
     local proj="$HERE/projects/$dir"
     echo "==================== $dir (${branch:-latest stable}) ===================="
 
-    # --- cheap identity resolution (no clone / no build) for the cache key ---
+    # --- identity resolution (no clone / no build) ---
     # repo-backed: branch HEAD commit + branch toolchain.
-    # repo-less: latest stable mathlib tag is the identity/toolchain. Two flavours:
-    #   reqname empty  -> built-in tactics (omega/grind/simp), commit label "(core)"
-    #   reqname set    -> a mathlib-bundled package (aesop; forcing aesop@master would
-    #                     break mathlib's cached build since aesop is a mathlib dep),
-    #                     so we benchmark the version mathlib ships. Label "(via mathlib)".
-    local commit tc key="" cdir="" branch_label commit_label
+    # repo-less: latest stable mathlib tag is the identity/toolchain. reqname empty ->
+    # built-in tactics "(core)"; reqname set -> mathlib-bundled package (aesop) "(via mathlib)".
+    local commit tc branch_label commit_label
     if [[ -n "$url" ]]; then
         commit="$(resolve_commit "$url" "$branch")"
         tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
         branch_label="$branch"; commit_label="$commit"
     else
-        commit="$(latest_stable_mathlib_tag)"   # e.g. v4.31.0 — drives cache identity
+        commit="$(latest_stable_mathlib_tag)"
         [[ -n "$commit" ]] && tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$commit/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
         branch_label="stable"
         [[ -n "$reqname" ]] && commit_label="(via mathlib)" || commit_label="(core)"
     fi
-    if [[ -n "$commit" && -n "$tc" ]]; then
-        key="$(cache_key "$dir" "$commit" "$tc" "$tactics_str")"
-        cdir="$CACHE_DIR/$dir/$key"
-    fi
 
-    # --- cache hit: reuse results, skip the expensive build + run ---
-    if [[ "$NO_CACHE" != "1" && -n "$cdir" ]] && compgen -G "$cdir/"'*_results.csv' >/dev/null 2>&1; then
-        echo "  cache HIT ($commit @ $tc) - reusing results, skipping build"
-        mkdir -p "$RESULTS/$dir"
-        cp "$cdir/"*_results.csv "$RESULTS/$dir/"
-        [[ -f "$cdir/env_errors.tsv" ]] && cp "$cdir/env_errors.tsv" "$RESULTS/$dir/"
-        put_rows "CACHED"
-        echo "  done (cached): results in $RESULTS/$dir"
-        return
-    fi
-    [[ "$NO_CACHE" == "1" ]] && echo "  NO_CACHE=1 - forcing rebuild" \
-                             || echo "  cache miss (${commit:-?} @ ${tc:-?}) - building"
-
-    scaffold "$dir" "$reqname" "$url" "$branch" "$tactics_str" "$imports_str" || {
-        put_rows "SCAFFOLD_FAIL"
-        return
-    }
-    [[ -z "$tc" ]] && tc="$(tr -d '[:space:]' < "$proj/lean-toolchain")"
-    echo "  toolchain: $tc"
-
-    ( cd "$proj" || exit 1
-      echo "  lake update..."; lake update       > update.log 2>&1
-      echo "  cache get...";   lake exe cache get > cache.log  2>&1 || true
-      if [[ -n "$module" ]]; then
-        echo "  build ${module}..."; lake build "${module}" > build.log 2>&1
-      else
-        echo "  (built-in tactics: no tool build)"
-      fi
-    )
-    local build_rc=$?
-
-    # authoritative resolved commit from the built manifest (repo-backed only)
-    if [[ -n "$url" && ( -z "$commit" || "$commit" == "?" ) ]]; then
-        commit="$(python3 -c "import json
-try:
-    d=json.load(open('$proj/lake-manifest.json'))
-    print(next((p['rev'][:9] for p in d['packages'] if p.get('name')=='$reqname'),'?'))
-except Exception: print('?')" 2>/dev/null)"
-        commit="${commit:-?}"; commit_label="$commit"
-    fi
-
-    if [[ $build_rc -ne 0 ]]; then
-        echo "  BUILD FAILED (see $proj/build.log)"
-        put_rows "BUILD_FAIL"
-        return   # failures are never cached, so they retry next run
-    fi
-
-    # Some tactics link native FFI (lean-smt -> cvc5) that the Lean interpreter used
-    # by `lake env lean` will not resolve unless the shared lib is explicitly loaded.
-    # Pass any cvc5 FFI lib built in this project as --load-dynlib.
-    local extra="" lib
-    for lib in "$proj"/.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.{dylib,so}; do
-        [[ -f "$lib" ]] && extra="$extra --load-dynlib=$lib"
+    # --- classify each suite: cached (per-suite key hit) vs missing ---
+    local can_cache=0
+    [[ "$NO_CACHE" != "1" && -n "$commit" && -n "$tc" && "$commit" != "?" ]] && can_cache=1
+    local sdir="$CACHE_DIR/$dir"
+    local cached_disp=() cached_sc=() missing_specs=()
+    local spec imp fp disp to mode sh sk sc
+    for spec in "${BENCHMARK_FILES[@]}"; do
+        IFS=':' read -r imp fp disp to mode <<< "$spec"; mode="${mode:-stmt}"
+        sh="$(suite_hash "$fp" "$mode")"
+        sc="$sdir/$disp/$(cache_key "$dir" "$commit" "$tc" "$tactics_str" "$sh")"
+        if [[ $can_cache -eq 1 && -f "$sc/${disp}_results.csv" ]]; then
+            cached_disp+=("$disp"); cached_sc+=("$sc")
+        else
+            missing_specs+=("$spec")
+        fi
     done
 
-    echo "  running benchmark...${extra:+ (loading cvc5 FFI)}"
-    ( cd "$proj" && LEAN_EXTRA_ARGS="$extra" QUIET=1 "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" > bench.log 2>&1 )
-    put_rows "OK"
-    echo "  done: results in $RESULTS/$dir"
+    # fresh results/<tool>/ dir (missing suites will be run into it; cached copied in)
+    mkdir -p "$RESULTS/$dir"
+    rm -f "$RESULTS/$dir"/*_results.csv "$RESULTS/$dir/env_errors.tsv"
+    : > "$RESULTS/$dir/env_errors.tsv"
 
-    # --- save results to cache under the identity key ---
-    if [[ -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
-        [[ -z "$key" ]] && cdir="$CACHE_DIR/$dir/$(cache_key "$dir" "$commit" "$tc" "$tactics_str")"
-        mkdir -p "$cdir"
-        cp "$RESULTS/$dir/"*_results.csv "$cdir/" 2>/dev/null && echo "  cached results for reuse"
-        [[ -f "$RESULTS/$dir/env_errors.tsv" ]] && cp "$RESULTS/$dir/env_errors.tsv" "$cdir/"
+    # --- run only the missing suites (build the tool first) ---
+    if [[ ${#missing_specs[@]} -gt 0 ]]; then
+        [[ "$NO_CACHE" == "1" ]] && echo "  NO_CACHE=1 - running all ${#missing_specs[@]} suites" \
+          || echo "  ${#missing_specs[@]} suite(s) to run, ${#cached_disp[@]} cached (${commit:-?} @ ${tc:-?})"
+        scaffold "$dir" "$reqname" "$url" "$branch" "$tactics_str" "$imports_str" || { put_rows "SCAFFOLD_FAIL"; return; }
+        [[ -z "$tc" ]] && tc="$(tr -d '[:space:]' < "$proj/lean-toolchain")"
+        # restrict this benchmark run to the missing suites
+        { printf 'BENCHMARK_FILES=('; for spec in "${missing_specs[@]}"; do printf '"%s" ' "$spec"; done; echo ')'; } >> "$proj/config.sh"
+        echo "  toolchain: $tc"
+        ( cd "$proj"
+          echo "  lake update..."; lake update > update.log 2>&1
+          echo "  cache get...";   lake exe cache get > cache.log 2>&1 || true
+          if [[ -n "$module" ]]; then echo "  build ${module}..."; lake build "${module}" > build.log 2>&1; else echo "  (no tool build)"; fi )
+        local build_rc=$?
+        if [[ -n "$url" && ( -z "$commit" || "$commit" == "?" ) ]]; then
+            commit="$(python3 -c "import json
+try:
+ d=json.load(open('$proj/lake-manifest.json')); print(next((p['rev'][:9] for p in d['packages'] if p.get('name')=='$reqname'),'?'))
+except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label="$commit"
+        fi
+        if [[ $build_rc -ne 0 ]]; then echo "  BUILD FAILED (see $proj/build.log)"; put_rows "BUILD_FAIL"; return; fi
+        local extra="" lib
+        for lib in "$proj"/.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.{dylib,so}; do [[ -f "$lib" ]] && extra="$extra --load-dynlib=$lib"; done
+        echo "  running ${#missing_specs[@]} suite(s)...${extra:+ (cvc5 FFI)}"
+        ( cd "$proj" && LEAN_EXTRA_ARGS="$extra" QUIET=1 "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" > bench.log 2>&1 )
+        # save each freshly-run suite to its own cache entry (identity must be stable)
+        if [[ -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
+            for spec in "${missing_specs[@]}"; do
+                IFS=':' read -r imp fp disp to mode <<< "$spec"; mode="${mode:-stmt}"
+                [[ -f "$RESULTS/$dir/${disp}_results.csv" ]] || continue
+                sc="$sdir/$disp/$(cache_key "$dir" "$commit" "$tc" "$tactics_str" "$(suite_hash "$fp" "$mode")")"
+                mkdir -p "$sc"
+                cp "$RESULTS/$dir/${disp}_results.csv" "$sc/"
+                awk -F'\t' -v d="$disp" '$1==d' "$RESULTS/$dir/env_errors.tsv" 2>/dev/null > "$sc/env.tsv"
+            done
+        fi
+    else
+        echo "  all ${#cached_disp[@]} suites cached ($commit @ $tc) - skipping build"
     fi
+
+    # --- assemble: copy cached suites in (missing ones are already present from the run) ---
+    local i
+    for ((i=0; i<${#cached_disp[@]}; i++)); do
+        cp "${cached_sc[$i]}/${cached_disp[$i]}_results.csv" "$RESULTS/$dir/" 2>/dev/null
+        [[ -f "${cached_sc[$i]}/env.tsv" ]] && cat "${cached_sc[$i]}/env.tsv" >> "$RESULTS/$dir/env_errors.tsv"
+    done
+
+    if [[ ${#missing_specs[@]} -eq 0 ]]; then put_rows "CACHED"; else put_rows "OK"; fi
+    echo "  done: results in $RESULTS/$dir (${#cached_disp[@]} cached, ${#missing_specs[@]} run)"
 }
 
 # --- arg handling: which tools to run (default: all) ---
