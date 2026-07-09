@@ -33,6 +33,8 @@ SUITE_DESC = {
     "ITL4": "Introduction to Logic",
     "MiniF2F": "Competition math (integer/number-theory subset)",
     "Verina": "Verified-programming specs (Verina, basic)",
+    "UPLCWidth": "UPLC symbolic correctness (growing expressions)",
+    "UPLCDepth": "UPLC concrete evaluation (growing computation)",
 }
 STATUS_RANK = {"OK": 0, "TIMEOUT": 1, "ENV": 2, "FAIL": 3}
 STATUS_STYLE = {

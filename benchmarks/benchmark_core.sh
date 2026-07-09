@@ -182,13 +182,15 @@ test_task_file() {
     [[ $DRY_RUN -eq 1 ]] && { echo "0|DRY_RUN"; return 0; }
 
     local tactic_import=$(get_tactic_import "$tactic")
+    local tactic_preamble=$(get_tactic_preamble "$tactic")
     local safe_tactic="${tactic//[^a-zA-Z0-9_-]/_}"
     local test_file="$TEMP_DIR/Task_${display_name}_${task_name}_${safe_tactic}.lean"
-    # Prepend the tactic import (if any), then the whole task file with the spec
-    # theorem's proof (everything from ':= by') replaced by the chosen tactic.
-    local proof_marker=':= by'
+    # Prepend the tactic import + preamble (e.g. auto's `set_option auto.smt …`), then
+    # the whole task file with the spec theorem's proof (everything from ':= by')
+    # replaced by the chosen tactic.
     {
         [[ -n "$tactic_import" ]] && echo "import $tactic_import"
+        [[ -n "$tactic_preamble" ]] && echo "$tactic_preamble"
         swap_proof "$task_file" "$tactic"
     } > "$test_file"
 
