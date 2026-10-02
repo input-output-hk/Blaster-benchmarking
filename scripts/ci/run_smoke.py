@@ -56,6 +56,8 @@ def main():
         'lean_toolchain': (ROOT / 'lean-toolchain').read_text().strip(),
         'lean': output('lean', '--version'),
         'z3': output('z3', '--version'),
+        'z3_source': json.loads((ROOT / '.ci-results/z3-source.json').read_text())
+                     if (ROOT / '.ci-results/z3-source.json').exists() else None,
         'runner': {'os': platform.system(), 'architecture': platform.machine()},
         'timeout_seconds': 20, 'parallel_jobs': 1, 'cache_enabled': False,
         'trust': {'omega': 'Lean tactic compilation', 'blaster': 'solver Valid; no proof certification claim'},

@@ -14,8 +14,8 @@ root Lake project and the moving-branch leaderboard. Manual runs may supply a fu
 `blaster_sha`; it must be compatible with the committed toolchain. Update the
 baseline deliberately and review the changed results. No result cache is used.
 
-The runner is ubuntu-24.04, Z3 is checksum-verified 4.15.2, and the job has a
-30-minute bound. Actions and the elan installer source are pinned; checkouts keep
+The runner is ubuntu-24.04, Z3 master is resolved to a full SHA and built from source, and the job has a
+45-minute bound. Actions and the elan installer source are pinned; checkouts keep
 no credentials and jobs have `contents: read`. The workflow-validation job uses
 checksum-verified actionlint 1.7.12. It has two exact compatibility exceptions for
 new gh-aw fields (`queue` and `copilot-requests`); other schema errors fail.
@@ -29,7 +29,7 @@ repository environment. No leaderboard or README is published by this workflow.
 
 ```sh
 python3 scripts/ci/test_smoke.py
-# Requires bash >=4, this repo's Lean, Z3 4.15.2 and network for the dependency:
+# Requires bash >=4, this repo's Lean, Z3 master and network for the dependency:
 python3 scripts/ci/run_smoke.py
 python3 scripts/ci/run_smoke.py --blaster-ref <40-character-SHA>
 ```
@@ -41,3 +41,18 @@ machine details and repetitions, and report timeout/unknown/environment changes
 separately from latency. Shared GitHub runner noise must not become a merge gate.
 Use the staged manual CI advisor in Lean-blaster to investigate failed smoke runs;
 AI publishing and automatic code contributions remain later rollout stages.
+
+## Z3 master policy
+
+Every run resolves Z3 master to a full commit and builds exactly that snapshot.
+`.ci-results/z3-source.json` records the source ref, commit and build mode;
+`z3-build.log` records compiler/configuration output. `environment.json` includes
+both this source metadata and the executable's version. A moving master baseline
+is identified by its commit, never only by a release-like version string.
+
+Set `Z3_COMMIT=<full-SHA>` to replay an earlier master snapshot exactly. This is
+also how the ecosystem matrix shares one solver commit across both consumers.
+`Z3_BUILD_JOBS` defaults to two to limit memory pressure; a failed build fails CI.
+The compiler and system libraries come from ubuntu-24.04. No built-solver cache is
+restored. Manual local source builds can run `bash scripts/ci/build-z3.sh`; add the
+absolute directory recorded in `.ci-results/z3-bin-path.txt` to PATH afterwards.
