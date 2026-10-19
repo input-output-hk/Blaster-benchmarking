@@ -18,8 +18,12 @@ Usage: python3 merge_results.py [results_dir]   (default: latest/results)
 """
 
 import csv
+import gzip
 import html
+import json
+import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Home tactic first, then the rest in a stable order.
@@ -35,13 +39,25 @@ SUITE_DESC = {
     "Verina": "Verified-programming specs (Verina, basic)",
     "UPLCWidth": "UPLC symbolic correctness (growing expressions)",
     "UPLCDepth": "UPLC concrete evaluation (growing computation)",
+    "BlasterHome": "Lean-blaster regression goals",
+    "SmtHome": "lean-smt proposition and integer tests",
+    "AutoHome": "lean-auto regression goals",
+    "AesopHome": "Aesop test goals",
+    "HammerHome": "LeanHammer's published smoke test",
+}
+SUITE_SOURCES = {
+    "BlasterHome": "https://github.com/input-output-hk/Lean-blaster/tree/main/Tests/FixedIssues",
+    "SmtHome": "https://github.com/ufmg-smite/lean-smt/tree/main/Test",
+    "AutoHome": "https://github.com/leanprover-community/lean-auto/blob/main/Test/Test_Regression.lean",
+    "AesopHome": "https://github.com/leanprover-community/aesop/tree/master/AesopTest",
+    "HammerHome": "https://github.com/JOSHCLUNE/LeanHammer#adding-leanhammer-to-your-project",
 }
 STATUS_RANK = {"OK": 0, "TIMEOUT": 1, "ENV": 2, "FAIL": 3}
 STATUS_STYLE = {
-    "OK":      ("#4ade80", "✓"),
-    "TIMEOUT": ("#fbbf24", "⏱"),
-    "ENV":     ("#60a5fa", "⊘"),
-    "FAIL":    ("#f87171", "✗"),
+    "OK":      ("#147761", "✓"),
+    "TIMEOUT": ("#9a6b12", "⏱"),
+    "ENV":     ("#35648c", "⊘"),
+    "FAIL":    ("#a54444", "✗"),
 }
 
 
@@ -149,6 +165,67 @@ def summarize(tactics: list, per_tactic: dict, theorems: list) -> dict:
     return s
 
 
+def snapshot(benches: dict, tactics: list, man: dict) -> dict:
+    """Persist status by stable suite/theorem/tactic ID for the next run."""
+    return {
+        "schema_version": 1,
+        "run": {
+            "id": os.environ.get("GITHUB_RUN_ID", ""),
+            "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "url": os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+            + "/" + os.environ.get("GITHUB_REPOSITORY", "input-output-hk/Lean-blaster")
+            + "/actions/runs/" + os.environ.get("GITHUB_RUN_ID", ""),
+        },
+        "versions": {t: man.get(t, {}) for t in tactics},
+        "suites": {
+            suite: {
+                tac: {thm: cell[1] for thm, cell in rows.items()}
+                for tac, rows in per_tactic.items()
+            }
+            for suite, per_tactic in benches.items()
+        },
+        "statements": {
+            suite: {
+                thm: cell[2]
+                for rows in per_tactic.values() for thm, cell in rows.items()
+            }
+            for suite, per_tactic in benches.items()
+        },
+    }
+
+
+def progress(current: dict, previous: dict) -> dict:
+    """Count status transitions only for identical suite, theorem and tactic IDs."""
+    if previous.get("schema_version") != 1:
+        return {}
+    out = {}
+    for suite, tactics in current["suites"].items():
+        prior_suite = previous.get("suites", {}).get(suite, {})
+        for tac, goals in tactics.items():
+            old_goals = prior_suite.get(tac, {})
+            now_statements = current.get("statements", {}).get(suite, {})
+            old_statements = previous.get("statements", {}).get(suite, {})
+            shared = {goal for goal in goals.keys() & old_goals.keys()
+                      if now_statements.get(goal) == old_statements.get(goal)}
+            gained = sum(goals[g] == "OK" and old_goals[g] != "OK" for g in shared)
+            lost = sum(goals[g] != "OK" and old_goals[g] == "OK" for g in shared)
+            out[(suite, tac)] = (gained, lost, len(shared), len(goals) - len(shared))
+    return out
+
+
+def delta_badge(changes: tuple | None) -> str:
+    if not changes:
+        return "—"
+    gain, loss, comparable, new = changes
+    if not comparable:
+        return f'<span class="delta neutral">{new} new goals</span>' if new else "—"
+    badges = (f'<span class="delta gain">+{gain}</span> '
+              f'<span class="delta loss">−{loss}</span>') if gain or loss else '<span class="delta neutral">no change</span>'
+    if new:
+        badges += f' <span class="delta neutral">{new} new</span>'
+    return badges
+
+
 def col_label(tac: str, man: dict) -> str:
     info = man.get(tac)
     if not info:
@@ -157,20 +234,23 @@ def col_label(tac: str, man: dict) -> str:
     commit = info.get("resolved_commit", "?")
     build = info.get("build_status", "OK")
     cached = " · cached" if build == "CACHED" else ""
-    tag = "" if build in ("OK", "CACHED") else f' <span style="color:#f87171">[{html.escape(build)}]</span>'
+    tag = "" if build in ("OK", "CACHED") else f' <span style="color:#a54444">[{html.escape(build)}]</span>'
     return (f'<div class="tac">{html.escape(tac)}</div>'
             f'<div class="ver">{html.escape(tc)} · {html.escape(commit)}{cached}</div>{tag}')
 
 
-def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: dict) -> str:
+def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: dict,
+                previous: dict | None = None) -> str:
     """Return a body-content fragment (style + markup), no document wrapper."""
     tcs = sorted({man[t].get("toolchain", "").replace("leanprover/lean4:", "")
                   for t in tactics if t in man} - {""})
     span = f"{tcs[0]} – {tcs[-1]}" if len(tcs) > 1 else (tcs[0] if tcs else "")
+    changes = progress(snapshot(benches, tactics, man), previous) if previous else {}
     parts = []
     parts.append(STYLE)
     parts.append('<div class="wrap">')
     parts.append('<header class="masthead">')
+    parts.append('<div class="eyebrow">Weekly benchmark · latest branches</div>')
     parts.append('<h1>Lean 4 tactic benchmark</h1>')
     parts.append(f'<p class="lede">{len(tactics)} tactics compared across {len(benches)} theorem suites. '
                  'Each tactic runs in its own isolated Lake project on its latest branch and that '
@@ -178,7 +258,18 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
     if span:
         parts.append(f'<div class="spanline">toolchains {html.escape(span)} &middot; '
                      f'{len(tactics)} tactics &middot; {len(benches)} suites</div>')
+    if previous:
+        prev_run = previous.get("run", {})
+        prev_url = prev_run.get("url", "")
+        prev_date = prev_run.get("time", "")[:10]
+        baseline = (f'<a href="{html.escape(prev_url, quote=True)}">{html.escape(prev_date)}</a>'
+                    if prev_url.startswith("https://github.com/") else html.escape(prev_date))
+        parts.append(f'<p class="compare-note">Changes compared with the {baseline} run. '
+                     'Only unchanged statements count as gains or losses; new goals have no baseline.</p>')
     parts.append('</header>')
+    parts.append('<nav class="jump" aria-label="Report sections"><a href="#overview">Overview</a>'
+                 '<a href="#suites">Suites</a><a href="#versions">Versions</a>'
+                 '<a href="#notes">How to read</a></nav>')
 
     # ---- at-a-glance overview: suites + overall standings ----
     suites = sorted(benches)
@@ -198,75 +289,93 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
         best = max(tactics, key=lambda x: oks[x]) if tactics else None
         suite_info[suite] = (n, best, oks.get(best, 0) if best else 0)
 
-    parts.append('<h2>Overview</h2>')
+    parts.append('<h2 id="overview">Overview</h2>')
     parts.append('<div class="suite-cards">')
     for suite in suites:
         n, best, best_ok = suite_info[suite]
         desc = SUITE_DESC.get(suite, "")
         pct = f"{best_ok / n * 100:.0f}%" if n else "0%"
         parts.append(
-            f'<div class="scard"><div class="scard-name">{html.escape(suite)}</div>'
+            f'<a class="scard" href="#suite-{html.escape(suite)}"><div class="scard-name">{html.escape(suite)}</div>'
             + (f'<div class="scard-desc">{html.escape(desc)}</div>' if desc else '<div class="scard-desc">&nbsp;</div>')
             + f'<div class="scard-n mono">{n} theorems</div>'
             f'<div class="scard-best">best <b>{html.escape(best or "-")}</b> '
-            f'<span class="mono">{best_ok}/{n} ({pct})</span></div></div>')
+            f'<span class="mono">{best_ok}/{n} ({pct})</span></div></a>')
     parts.append('</div>')
 
-    parts.append('<table class="standings"><tr><th>#</th><th>tactic</th>'
-                 '<th>solved</th><th style="width:46%"></th></tr>')
+    parts.append('<h3>Overall standing</h3><div class="table-scroll"><table class="standings"><tr>'
+                 '<th>#</th><th>tactic</th><th>solved</th><th>since last run</th>'
+                 '<th class="bar-col">share solved</th></tr>')
     for i, tac in enumerate(sorted(tactics, key=lambda x: totals[x], reverse=True), 1):
         sol = totals[tac]
         pct = sol / grand_n * 100 if grand_n else 0
+        comparison = None
+        if previous:
+            related = [changes[(s, tac)] for s in suites if (s, tac) in changes]
+            comparison = (sum(c[0] for c in related), sum(c[1] for c in related),
+                          sum(c[2] for c in related), sum(c[3] for c in related))
         parts.append(
             f'<tr><td class="mono dim">{i}</td><td class="mono">{html.escape(tac)}</td>'
             f'<td class="mono"><b>{sol}</b>/{grand_n} <span class="dim">({pct:.0f}%)</span></td>'
-            f'<td><div class="bar"><span style="background:#4ade80;width:{pct:.1f}%"></span></div></td></tr>')
-    parts.append('</table>')
+            f'<td>{delta_badge(comparison) if previous else "—"}</td>'
+            f'<td><div class="bar"><span style="width:{pct:.1f}%"></span></div></td></tr>')
+    parts.append('</table></div>')
 
     # version manifest
-    parts.append('<h2>Versions run</h2>')
+    parts.append('<h2 id="versions">Versions run</h2><div class="table-scroll">')
     parts.append('<table class="manifest"><tr><th>tactic</th><th>branch</th><th>toolchain</th>'
                  '<th>commit</th><th>build</th></tr>')
     for tac in tactics:
         info = man.get(tac, {})
         build = info.get("build_status", "?")
-        bcol = "#4ade80" if build in ("OK", "CACHED") else "#f87171"
+        bcol = "#147761" if build in ("OK", "CACHED") else "#a54444"
         parts.append(
             f'<tr><td class="mono">{html.escape(tac)}</td>'
             f'<td class="mono">{html.escape(info.get("branch","?"))}</td>'
             f'<td class="mono">{html.escape(info.get("toolchain","?"))}</td>'
             f'<td class="mono">{html.escape(info.get("resolved_commit","?"))}</td>'
             f'<td class="mono" style="color:{bcol}">{html.escape(build)}</td></tr>')
-    parts.append('</table>')
+    parts.append('</table></div>')
 
     # per-benchmark summary + matrix
+    parts.append('<h2 id="suites">Suite details</h2>')
     for bench in sorted(benches):
         per_tactic = benches[bench]
         theorems, stmt_of = write_merged_csv(results, bench, tactics, per_tactic)
         summ = summarize(tactics, per_tactic, theorems)
         n = len(theorems)
-        parts.append(f'<h2>{html.escape(bench)} <span class="dim">· {n} theorems</span></h2>')
+        source = SUITE_SOURCES.get(bench)
+        parts.append(f'<section class="suite" id="suite-{html.escape(bench)}">')
+        parts.append(f'<div class="suite-head"><div><h3>{html.escape(bench)} '
+                     f'<span class="dim">· {n} theorems</span></h3>'
+                     f'<p>{html.escape(SUITE_DESC.get(bench, ""))}</p></div>'
+                     + (f'<a class="source" href="{html.escape(source, quote=True)}">Source ↗</a>' if source else '')
+                     + '</div><div class="table-scroll">')
 
         # summary bars
         parts.append('<table class="summary"><tr><th>tactic</th><th>solved</th>'
-                     '<th style="width:38%">breakdown</th><th>timeout</th><th>env</th><th>fail</th></tr>')
+                     '<th>since last run</th><th class="bar-col">breakdown</th>'
+                     '<th>timeout</th><th>env</th><th>fail</th></tr>')
         for tac in tactics:
             c = summ[tac]
             ok, to, en, fa = c["OK"], c["TIMEOUT"], c["ENV"], c["FAIL"]
             tot = max(n, 1)
-            seg = (f'<span style="background:#4ade80;width:{ok/tot*100:.1f}%"></span>'
-                   f'<span style="background:#fbbf24;width:{to/tot*100:.1f}%"></span>'
-                   f'<span style="background:#60a5fa;width:{en/tot*100:.1f}%"></span>'
-                   f'<span style="background:#f87171;width:{fa/tot*100:.1f}%"></span>')
+            seg = (f'<span style="background:#16836c;width:{ok/tot*100:.1f}%"></span>'
+                   f'<span style="background:#c18a20;width:{to/tot*100:.1f}%"></span>'
+                   f'<span style="background:#4b78a3;width:{en/tot*100:.1f}%"></span>'
+                   f'<span style="background:#c75e5e;width:{fa/tot*100:.1f}%"></span>')
             parts.append(
                 f'<tr><td class="mono">{html.escape(tac)}</td>'
-                f'<td class="mono"><b style="color:#4ade80">{ok}</b>/{n} ({ok/tot*100:.0f}%)</td>'
+                f'<td class="mono"><b>{ok}</b>/{n} ({ok/tot*100:.0f}%)</td>'
+                f'<td>{delta_badge(changes.get((bench, tac))) if previous else "—"}</td>'
                 f'<td><div class="bar">{seg}</div></td>'
-                f'<td class="mono">{to}</td><td class="mono" style="color:#60a5fa">{en}</td>'
+                f'<td class="mono">{to}</td><td class="mono" style="color:#35648c">{en}</td>'
                 f'<td class="mono">{fa}</td></tr>')
-        parts.append('</table>')
+        parts.append('</table></div>')
 
         # matrix
+        parts.append('<details class="matrix-details"><summary>Explore theorem results '
+                     f'<span>{n} goals × {len(tactics)} tactics</span></summary>')
         parts.append('<div class="scroll"><table class="matrix"><tr><th class="thm">theorem</th>')
         for tac in tactics:
             parts.append(f'<th>{col_label(tac, man)}</th>')
@@ -276,7 +385,7 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
             for tac in tactics:
                 cell = per_tactic.get(tac, {}).get(thm, ("", "FAIL", ""))
                 time_s, st = cell[0], cell[1]
-                color, glyph = STATUS_STYLE.get(st, ("#f87171", "✗"))
+                color, glyph = STATUS_STYLE.get(st, ("#a54444", "✗"))
                 label = f"{time_s} ms" if (st == "OK" and str(time_s).isdigit()) else st
                 if st == "ENV":
                     info = errors.get(tac, {}).get((bench, thm)) or "statement did not elaborate on this toolchain"
@@ -291,10 +400,13 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
                              f'data-st="{html.escape(st)}" data-info="{html.escape(info)}" '
                              f'title="{html.escape(info)}">{glyph} {html.escape(label)}</td>')
             parts.append('</tr>')
-        parts.append('</table></div>')
+        parts.append('</table></div></details></section>')
 
     # caveats
-    parts.append('<h2>Reading these results fairly</h2><ul class="caveats">')
+    parts.append('<h2 id="notes">Reading these results fairly</h2><ul class="caveats">')
+    parts.append('<li><b>Home turf suites.</b> Theorems are adapted from each linked repository, '
+                 'stripped to portable statements and run against every tactic. A result here '
+                 'does not replace that project’s own test suite.</li>')
     parts.append('<li><b>Different toolchains &amp; mathlib versions.</b> A tactic\'s pass/fail can shift '
                  'between Lean versions because available lemmas and simp sets changed — not necessarily '
                  'because the tactic itself improved or regressed. Compare with that in mind.</li>')
@@ -318,64 +430,29 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
 # and semantic status colours (green/amber/blue/red) carrying the data — kept separate
 # from the accent. Tabular figures so columns of numbers align.
 STYLE = """<style>
-:root{--bg:#0b0e14;--panel:#111621;--bd:rgba(148,163,199,.14);--tx:#e5e9f5;
- --dim:#8b93ab;--acc:#7dd3fc;--ok:#4ade80;--to:#fbbf24;--env:#60a5fa;--fail:#f87171}
-*{box-sizing:border-box}
-.wrap{max-width:1180px;margin:0 auto;padding:8px 24px 96px;
- font:15px/1.65 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--tx)}
-.masthead{padding:40px 0 28px;border-bottom:1px solid var(--bd);margin-bottom:8px}
-.eyebrow{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.72rem;
- letter-spacing:.18em;text-transform:uppercase;color:var(--acc);margin-bottom:14px}
-h1{font-size:clamp(1.9rem,4vw,2.7rem);line-height:1.08;margin:0 0 14px;font-weight:700;
- letter-spacing:-.015em;text-wrap:balance;max-width:16ch}
-h1 .hl{color:var(--acc)}
-h2{margin:48px 0 6px;font-size:1.25rem;font-weight:650;letter-spacing:-.01em}
-.lede{color:var(--dim);max-width:64ch;font-size:1.02rem}
-.spanline{margin-top:16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
- font-size:.78rem;color:var(--dim)}.spanline b{color:var(--tx)}
-.dim{color:var(--dim);font-weight:400;font-size:.9rem}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
-table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
-th,td{padding:8px 13px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}
-th{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
-td{font-variant-numeric:tabular-nums}
-.manifest td,.summary td{white-space:nowrap}
-.manifest,.summary,.standings{background:var(--panel);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
-.suite-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0 26px}
-.scard{background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:16px 18px}
-.scard-name{font-weight:700;font-size:1.1rem;letter-spacing:-.01em}
-.scard-desc{color:var(--dim);font-size:.78rem;margin:1px 0 12px}
-.scard-n{font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
-.scard-best{margin-top:8px;font-size:.9rem}.scard-best b{color:var(--acc)}
-.standings td{white-space:nowrap}.standings td:last-child{width:46%}
-.bar{display:flex;height:8px;border-radius:5px;overflow:hidden;background:rgba(148,163,199,.1)}
-.bar span{display:block}
-.scroll{overflow-x:auto;border:1px solid var(--bd);border-radius:10px}
-.matrix{margin:0;font-size:12px}
-.matrix th .tac{font-weight:700;color:var(--tx);text-transform:none;font-size:.8rem}
-.matrix th .ver{color:var(--dim);font-size:.66rem;font-weight:400;text-transform:none;
- letter-spacing:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.matrix .thm{position:sticky;left:0;background:var(--bg);max-width:280px;overflow:hidden;
- text-overflow:ellipsis;box-shadow:1px 0 0 var(--bd)}
-.cell{white-space:nowrap;cursor:pointer}
-.caveats{color:var(--dim);max-width:78ch}.caveats li{margin:9px 0}.caveats b{color:var(--tx)}
-.hint{color:var(--dim);font-size:.8rem;margin-top:18px}
-code{background:rgba(148,163,199,.12);padding:1px 5px;border-radius:4px;font-size:.85em;
- font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-tr:hover td{background:rgba(148,163,199,.05)}
-#cellpop{position:fixed;z-index:60;max-width:380px;display:none;background:var(--panel);
- border:1px solid var(--bd);border-radius:8px;padding:12px 14px;box-shadow:0 10px 34px rgba(0,0,0,.55)}
-#cellpop .pl{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.08em}
-#cellpop .pt{font-weight:700;font-size:.92rem;margin-top:2px;word-break:break-word}
-#cellpop .pst{margin-top:7px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-#cellpop .pm{margin-top:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;
- color:var(--tx);white-space:pre-wrap;word-break:break-word;line-height:1.5}
+:root{--bg:#f7f8f5;--panel:#fff;--bd:#dfe3dc;--tx:#17221e;--dim:#61716a;--acc:#146955;--ok:#16836c;--to:#c18a20;--env:#4b78a3;--fail:#c75e5e}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{color:var(--tx)}
+.wrap{max-width:1280px;margin:0 auto;padding:0 32px 96px;font:15px/1.6 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--tx)}
+a{color:var(--acc)}.masthead{padding:56px 0 30px}.eyebrow{color:var(--acc);font-size:.75rem;font-weight:750;text-transform:uppercase;letter-spacing:.16em;margin-bottom:15px}
+h1{font-size:clamp(2.3rem,5vw,4rem);line-height:1.05;margin:0 0 18px;font-weight:760;letter-spacing:-.045em}.lede{color:var(--dim);max-width:78ch;font-size:1.05rem;margin:0}
+.spanline{margin-top:18px;color:var(--dim);font-size:.82rem}.compare-note{margin:22px 0 0;padding:12px 16px;border-left:3px solid var(--acc);background:#eaf4ee;color:#355448;font-size:.88rem;max-width:80ch}
+.jump{position:sticky;top:0;z-index:20;display:flex;gap:24px;flex-wrap:wrap;padding:12px 0;margin:0 0 30px;background:rgba(247,248,245,.95);border-block:1px solid var(--bd);backdrop-filter:blur(12px)}.jump a{text-decoration:none;font-weight:650;font-size:.85rem}.jump a:hover{text-decoration:underline}
+h2{margin:50px 0 16px;font-size:1.55rem;letter-spacing:-.025em;line-height:1.2}h3{margin:0 0 10px;font-size:1.09rem;letter-spacing:-.01em}.dim{color:var(--dim);font-weight:400;font-size:.88rem}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.suite-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:0 0 32px}.scard{display:block;color:inherit;text-decoration:none;background:var(--panel);border:1px solid var(--bd);border-radius:12px;padding:17px 18px;box-shadow:0 1px 3px #193d2910;transition:transform .15s,box-shadow .15s}.scard:hover{transform:translateY(-2px);box-shadow:0 8px 25px #193d291b;border-color:#a5c8b5}.scard-name{font-weight:750;font-size:1.1rem}.scard-desc{color:var(--dim);font-size:.8rem;min-height:2.3em;margin:3px 0 10px}.scard-n{font-size:.72rem;color:var(--dim)}.scard-best{margin-top:8px;font-size:.85rem}.scard-best b{color:var(--acc)}
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--panel)}th,td{padding:10px 13px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:middle}tr:last-child td{border-bottom:0}th{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;font-weight:700;background:#f0f3ee}td{font-variant-numeric:tabular-nums}tr:hover td{background:#f6faf6}.table-scroll{overflow-x:auto;border:1px solid var(--bd);border-radius:11px;background:var(--panel);box-shadow:0 1px 3px #193d2910}.manifest td,.summary td,.standings td{white-space:nowrap}.bar-col{min-width:180px;width:25%}.bar{display:flex;height:9px;border-radius:9px;overflow:hidden;background:#e6ebe5}.bar span{display:block;background:var(--ok)}.bar span:nth-child(2){background:var(--to)}.bar span:nth-child(3){background:var(--env)}.bar span:nth-child(4){background:var(--fail)}
+.delta{display:inline-block;padding:2px 7px;border-radius:5px;font-size:.73rem;font-weight:750;white-space:nowrap}.delta.gain{color:#0d694b;background:#ddf3e7}.delta.loss{color:#a83c3c;background:#ffe9e5}.delta.neutral{color:#67766c;background:#edf0e9}
+.suite{border-top:1px solid var(--bd);padding:26px 0 8px;scroll-margin-top:70px}.suite-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.suite-head p{margin:0 0 14px;color:var(--dim);font-size:.9rem}.source{font-size:.78rem;text-decoration:none;font-weight:700;white-space:nowrap}.source:hover{text-decoration:underline}
+.matrix-details{margin:12px 0 24px}.matrix-details summary{cursor:pointer;color:var(--acc);font-weight:700;font-size:.85rem;padding:7px 0}.matrix-details summary span{color:var(--dim);font-weight:400;margin-left:7px}.scroll{overflow:auto;max-height:670px;border:1px solid var(--bd);border-radius:9px;margin-top:9px}.matrix{font-size:12px}.matrix th{position:sticky;top:0;z-index:2}.matrix th .tac{font-size:.77rem;font-weight:700;color:var(--tx);text-transform:none;letter-spacing:0;white-space:nowrap}.matrix th .ver{font-size:.64rem;color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;white-space:nowrap}.matrix .thm{position:sticky;left:0;background:var(--panel);min-width:180px;max-width:260px;overflow:hidden;text-overflow:ellipsis;box-shadow:1px 0 0 var(--bd);z-index:1}.matrix th.thm{z-index:3;background:#f0f3ee}.cell{white-space:nowrap;cursor:pointer}.cell:hover{text-decoration:underline}
+.caveats{color:var(--dim);max-width:82ch}.caveats li{margin:12px 0}.caveats b{color:var(--tx)}.hint{color:var(--dim);font-size:.81rem}code{background:#e9efea;padding:1px 5px;border-radius:4px;font-size:.85em}
+#cellpop{position:fixed;z-index:60;max-width:380px;display:none;background:var(--panel);border:1px solid var(--bd);border-radius:9px;padding:13px 15px;box-shadow:0 12px 36px #17221e38}#cellpop .pl{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.08em}#cellpop .pt{font-weight:700;font-size:.92rem;margin-top:2px;word-break:break-word}#cellpop .pst{margin-top:7px;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}#cellpop .pm{margin-top:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;color:var(--tx);white-space:pre-wrap;word-break:break-word;line-height:1.5}
+@media(max-width:700px){.wrap{padding:0 16px 70px}.masthead{padding:34px 0 20px}.jump{gap:14px}.suite-head{display:block}.source{display:inline-block;margin-bottom:12px}.bar-col{min-width:110px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.scard{transition:none}}
 </style>"""
 
 POPOVER_JS = """<script>
 (function(){
   var pop=document.getElementById('cellpop');
-  var COL={OK:'#4ade80',TIMEOUT:'#fbbf24',ENV:'#60a5fa',FAIL:'#f87171'};
+  var COL={OK:'#147761',TIMEOUT:'#9a6b12',ENV:'#35648c',FAIL:'#a54444'};
   pop.innerHTML='<div class="pl"></div><div class="pt"></div><div class="pst"></div><div class="pm"></div>';
   document.addEventListener('click',function(e){
     var td=e.target.closest?e.target.closest('td.cell'):null;
@@ -383,7 +460,7 @@ POPOVER_JS = """<script>
     pop.querySelector('.pl').textContent=td.dataset.tac||'';
     pop.querySelector('.pt').textContent=td.dataset.thm||'';
     var ps=pop.querySelector('.pst');ps.textContent=td.dataset.st||'';
-    ps.style.color=COL[td.dataset.st]||'#f87171';
+    ps.style.color=COL[td.dataset.st]||'#a54444';
     pop.querySelector('.pm').textContent=td.dataset.info||'';
     pop.style.display='block';
     var r=td.getBoundingClientRect(),pw=pop.offsetWidth,ph=pop.offsetHeight;
@@ -414,8 +491,11 @@ def emit_markdown(benches: dict, tactics: list, man: dict, report_url: str = "")
             totals[t][0] += ok
             totals[t][1] += n
 
-    head = "| Tactic | Version | " + " | ".join(suites) + " | **Solved** |"
-    sep = "|:--|:--|" + "--:|" * len(suites) + "--:|"
+    # Keep the README compact as suites grow; the HTML report has each home suite.
+    home = [s for s in suites if s.endswith("Home")]
+    columns = [s for s in suites if s not in home] + (["Home turf"] if home else [])
+    head = "| Tactic | Version | " + " | ".join(columns) + " | **Solved** |"
+    sep = "|:--|:--|" + "--:|" * len(columns) + "--:|"
     rows = [head, sep]
     # order tactics by total solved, descending
     for t in sorted(tactics, key=lambda x: totals[x][0], reverse=True):
@@ -427,13 +507,18 @@ def emit_markdown(benches: dict, tactics: list, man: dict, report_url: str = "")
             ver = f"`{tc}` @ `{commit}`" + (" _(cached)_" if build == "CACHED" else "")
         else:
             ver = f"`{tc}` **{build}**"
-        cells = " | ".join(f"{per[t][s][0]}/{per[t][s][1]}" for s in suites)
+        cells = " | ".join(f"{per[t][s][0]}/{per[t][s][1]}" for s in columns if s != "Home turf")
+        if home:
+            home_ok = sum(per[t][s][0] for s in home)
+            home_n = sum(per[t][s][1] for s in home)
+            cells += f" | {home_ok}/{home_n}"
         sol, tot = totals[t]
         rows.append(f"| `{t}` | {ver} | {cells} | **{sol}/{tot}** |")
 
     note = ("\n_Each tactic runs in an isolated Lake project on its **latest default branch** and that "
             "branch's own Lean toolchain (tracked live). Cells show theorems **solved / total**; "
-            "cross-version numbers can shift with mathlib changes, not only tactic quality._")
+            "cross-version numbers can shift with mathlib changes, not only tactic quality. "
+            "Home turf groups curated goals from the tactic repositories; the report shows each suite._")
     link = f"\n\n**[Full interactive report →]({report_url})**" if report_url else ""
     return "\n".join(rows) + "\n" + note + link + "\n"
 
@@ -442,22 +527,31 @@ def wrap_standalone(fragment: str) -> str:
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>Fair latest-branch tactic benchmark</title>'
-            f'<style>body{{margin:0;background:#0b0e14}}</style></head><body>{fragment}</body></html>')
+            f'<style>body{{margin:0;background:#f7f8f5}}</style></head><body>{fragment}</body></html>')
 
 
 def main():
     results = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "results"
+    previous_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+    previous = None
+    if previous_path and previous_path.exists():
+        reader = gzip.open if previous_path.suffix == ".gz" else open
+        with reader(previous_path, "rt", encoding="utf-8") as f:
+            previous = json.load(f)
     man = load_manifest(results)
     benches, seen, errors = discover(results)
     if not benches:
         print(f"No per-tool result CSVs found under {results}", file=sys.stderr)
         sys.exit(1)
     tactics = ordered_tactics(seen)
-    fragment = render_html(results, benches, tactics, man, errors)
+    fragment = render_html(results, benches, tactics, man, errors, previous)
     out_html = results / "report.html"
     out_html.write_text(wrap_standalone(fragment), encoding="utf-8")
     frag_html = results / "report.artifact.html"
     frag_html.write_text(fragment, encoding="utf-8")
+    snapshot_out = results / "snapshot.json"
+    snapshot_out.write_text(json.dumps(snapshot(benches, tactics, man), indent=2, sort_keys=True) + "\n",
+                            encoding="utf-8")
     # Markdown summary for README injection (report URL comes from env in CI).
     import os
     md = emit_markdown(benches, tactics, man, os.environ.get("BENCH_REPORT_URL", ""))
@@ -467,6 +561,7 @@ def main():
     print(f"Report:      {out_html}")
     print(f"Artifact:    {frag_html}")
     print(f"Summary md:  {md_out}")
+    print(f"Snapshot:    {snapshot_out}")
     # brief console summary
     for bench in sorted(benches):
         thms = set()
