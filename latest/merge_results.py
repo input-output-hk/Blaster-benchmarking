@@ -39,18 +39,25 @@ SUITE_DESC = {
     "Verina": "Verified-programming specs (Verina, basic)",
     "UPLCWidth": "UPLC symbolic correctness (growing expressions)",
     "UPLCDepth": "UPLC concrete evaluation (growing computation)",
-    "BlasterHome": "Lean-blaster regression goals",
-    "SmtHome": "lean-smt proposition and integer tests",
-    "AutoHome": "lean-auto regression goals",
+    "BlasterHome": "Lean-blaster regression and SMT goals",
+    "SmtHome": "lean-smt logic, arithmetic, and bitvector tests",
+    "AutoHome": "lean-auto regression and translation goals",
     "AesopHome": "Aesop test goals",
-    "HammerHome": "LeanHammer's published smoke test",
+    "HammerHome": "LeanHammer smoke test and Duper dependency tests",
+}
+SUITE_LABELS = {
+    "BlasterHome": "Blaster",
+    "SmtHome": "lean-smt",
+    "AutoHome": "lean-auto",
+    "AesopHome": "Aesop",
+    "HammerHome": "LeanHammer + Duper",
 }
 SUITE_SOURCES = {
-    "BlasterHome": "https://github.com/input-output-hk/Lean-blaster/tree/main/Tests/FixedIssues",
+    "BlasterHome": "https://github.com/input-output-hk/Lean-blaster/tree/main/Tests",
     "SmtHome": "https://github.com/ufmg-smite/lean-smt/tree/main/Test",
-    "AutoHome": "https://github.com/leanprover-community/lean-auto/blob/main/Test/Test_Regression.lean",
+    "AutoHome": "https://github.com/leanprover-community/lean-auto/tree/main/Test",
     "AesopHome": "https://github.com/leanprover-community/aesop/tree/master/AesopTest",
-    "HammerHome": "https://github.com/JOSHCLUNE/LeanHammer#adding-leanhammer-to-your-project",
+    "HammerHome": "https://github.com/leanprover-community/duper/tree/main/Duper/Tests",
 }
 STATUS_RANK = {"OK": 0, "TIMEOUT": 1, "ENV": 2, "FAIL": 3}
 STATUS_STYLE = {
@@ -273,6 +280,8 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
 
     # ---- at-a-glance overview: suites + overall standings ----
     suites = sorted(benches)
+    home_suites = [s for s in suites if s.endswith("Home")]
+    shared_suites = [s for s in suites if s not in home_suites]
     totals = {t: 0 for t in tactics}
     grand_n = 0
     suite_info = {}
@@ -290,18 +299,22 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
         suite_info[suite] = (n, best, oks.get(best, 0) if best else 0)
 
     parts.append('<h2 id="overview">Overview</h2>')
-    parts.append('<div class="suite-cards">')
-    for suite in suites:
-        n, best, best_ok = suite_info[suite]
-        desc = SUITE_DESC.get(suite, "")
-        pct = f"{best_ok / n * 100:.0f}%" if n else "0%"
-        parts.append(
-            f'<a class="scard" href="#suite-{html.escape(suite)}"><div class="scard-name">{html.escape(suite)}</div>'
-            + (f'<div class="scard-desc">{html.escape(desc)}</div>' if desc else '<div class="scard-desc">&nbsp;</div>')
-            + f'<div class="scard-n mono">{n} theorems</div>'
-            f'<div class="scard-best">best <b>{html.escape(best or "-")}</b> '
-            f'<span class="mono">{best_ok}/{n} ({pct})</span></div></a>')
-    parts.append('</div>')
+    for label, group in (("Home turf · each source is its own category", home_suites),
+                         ("Shared benchmarks", shared_suites)):
+        if not group:
+            continue
+        parts.append(f'<h3 class="group-title">{html.escape(label)}</h3><div class="suite-cards">')
+        for suite in group:
+            n, best, best_ok = suite_info[suite]
+            desc = SUITE_DESC.get(suite, "")
+            pct = f"{best_ok / n * 100:.0f}%" if n else "0%"
+            parts.append(
+                f'<a class="scard" href="#suite-{html.escape(suite)}"><div class="scard-name">{html.escape(SUITE_LABELS.get(suite, suite))}</div>'
+                + (f'<div class="scard-desc">{html.escape(desc)}</div>' if desc else '<div class="scard-desc">&nbsp;</div>')
+                + f'<div class="scard-n mono">{n} theorems</div>'
+                f'<div class="scard-best">best <b>{html.escape(best or "-")}</b> '
+                f'<span class="mono">{best_ok}/{n} ({pct})</span></div></a>')
+        parts.append('</div>')
 
     parts.append('<h3>Overall standing</h3><div class="table-scroll"><table class="standings"><tr>'
                  '<th>#</th><th>tactic</th><th>solved</th><th>since last run</th>'
@@ -339,14 +352,18 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
 
     # per-benchmark summary + matrix
     parts.append('<h2 id="suites">Suite details</h2>')
-    for bench in sorted(benches):
+    for bench in home_suites + shared_suites:
+        if home_suites and bench == home_suites[0]:
+            parts.append('<h3 class="group-title">Home turf categories</h3>')
+        if shared_suites and bench == shared_suites[0]:
+            parts.append('<h3 class="group-title">Shared benchmarks</h3>')
         per_tactic = benches[bench]
         theorems, stmt_of = write_merged_csv(results, bench, tactics, per_tactic)
         summ = summarize(tactics, per_tactic, theorems)
         n = len(theorems)
         source = SUITE_SOURCES.get(bench)
         parts.append(f'<section class="suite" id="suite-{html.escape(bench)}">')
-        parts.append(f'<div class="suite-head"><div><h3>{html.escape(bench)} '
+        parts.append(f'<div class="suite-head"><div><h3>{html.escape(SUITE_LABELS.get(bench, bench))} '
                      f'<span class="dim">· {n} theorems</span></h3>'
                      f'<p>{html.escape(SUITE_DESC.get(bench, ""))}</p></div>'
                      + (f'<a class="source" href="{html.escape(source, quote=True)}">Source ↗</a>' if source else '')
@@ -404,9 +421,11 @@ def render_html(results: Path, benches: dict, tactics: list, man: dict, errors: 
 
     # caveats
     parts.append('<h2 id="notes">Reading these results fairly</h2><ul class="caveats">')
-    parts.append('<li><b>Home turf suites.</b> Theorems are adapted from each linked repository, '
-                 'stripped to portable statements and run against every tactic. A result here '
-                 'does not replace that project’s own test suite.</li>')
+    parts.append('<li><b>Home turf suites.</b> Each category has 50 source-linked goals, '
+                 'adapted to portable statements and run against every tactic. Hammer’s category '
+                 'uses one LeanHammer example and 49 Duper dependency tests because LeanHammer '
+                 'does not publish a theorem test suite. These samples do not replace the projects’ '
+                 'own test suites.</li>')
     parts.append('<li><b>Different toolchains &amp; mathlib versions.</b> A tactic\'s pass/fail can shift '
                  'between Lean versions because available lemmas and simp sets changed — not necessarily '
                  'because the tactic itself improved or regressed. Compare with that in mind.</li>')
@@ -437,7 +456,7 @@ a{color:var(--acc)}.masthead{padding:56px 0 30px}.eyebrow{color:var(--acc);font-
 h1{font-size:clamp(2.3rem,5vw,4rem);line-height:1.05;margin:0 0 18px;font-weight:760;letter-spacing:-.045em}.lede{color:var(--dim);max-width:78ch;font-size:1.05rem;margin:0}
 .spanline{margin-top:18px;color:var(--dim);font-size:.82rem}.compare-note{margin:22px 0 0;padding:12px 16px;border-left:3px solid var(--acc);background:#eaf4ee;color:#355448;font-size:.88rem;max-width:80ch}
 .jump{position:sticky;top:0;z-index:20;display:flex;gap:24px;flex-wrap:wrap;padding:12px 0;margin:0 0 30px;background:rgba(247,248,245,.95);border-block:1px solid var(--bd);backdrop-filter:blur(12px)}.jump a{text-decoration:none;font-weight:650;font-size:.85rem}.jump a:hover{text-decoration:underline}
-h2{margin:50px 0 16px;font-size:1.55rem;letter-spacing:-.025em;line-height:1.2}h3{margin:0 0 10px;font-size:1.09rem;letter-spacing:-.01em}.dim{color:var(--dim);font-weight:400;font-size:.88rem}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+h2{margin:50px 0 16px;font-size:1.55rem;letter-spacing:-.025em;line-height:1.2}h3{margin:0 0 10px;font-size:1.09rem;letter-spacing:-.01em}.group-title{margin:24px 0 12px;color:var(--dim);font-size:.9rem;text-transform:uppercase;letter-spacing:.06em}.dim{color:var(--dim);font-weight:400;font-size:.88rem}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
 .suite-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:0 0 32px}.scard{display:block;color:inherit;text-decoration:none;background:var(--panel);border:1px solid var(--bd);border-radius:12px;padding:17px 18px;box-shadow:0 1px 3px #193d2910;transition:transform .15s,box-shadow .15s}.scard:hover{transform:translateY(-2px);box-shadow:0 8px 25px #193d291b;border-color:#a5c8b5}.scard-name{font-weight:750;font-size:1.1rem}.scard-desc{color:var(--dim);font-size:.8rem;min-height:2.3em;margin:3px 0 10px}.scard-n{font-size:.72rem;color:var(--dim)}.scard-best{margin-top:8px;font-size:.85rem}.scard-best b{color:var(--acc)}
 table{border-collapse:collapse;width:100%;font-size:13px;background:var(--panel)}th,td{padding:10px 13px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:middle}tr:last-child td{border-bottom:0}th{color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;font-weight:700;background:#f0f3ee}td{font-variant-numeric:tabular-nums}tr:hover td{background:#f6faf6}.table-scroll{overflow-x:auto;border:1px solid var(--bd);border-radius:11px;background:var(--panel);box-shadow:0 1px 3px #193d2910}.manifest td,.summary td,.standings td{white-space:nowrap}.bar-col{min-width:180px;width:25%}.bar{display:flex;height:9px;border-radius:9px;overflow:hidden;background:#e6ebe5}.bar span{display:block;background:var(--ok)}.bar span:nth-child(2){background:var(--to)}.bar span:nth-child(3){background:var(--env)}.bar span:nth-child(4){background:var(--fail)}
 .delta{display:inline-block;padding:2px 7px;border-radius:5px;font-size:.73rem;font-weight:750;white-space:nowrap}.delta.gain{color:#0d694b;background:#ddf3e7}.delta.loss{color:#a83c3c;background:#ffe9e5}.delta.neutral{color:#67766c;background:#edf0e9}
@@ -491,34 +510,45 @@ def emit_markdown(benches: dict, tactics: list, man: dict, report_url: str = "")
             totals[t][0] += ok
             totals[t][1] += n
 
-    # Keep the README compact as suites grow; the HTML report has each home suite.
     home = [s for s in suites if s.endswith("Home")]
-    columns = [s for s in suites if s not in home] + (["Home turf"] if home else [])
-    head = "| Tactic | Version | " + " | ".join(columns) + " | **Solved** |"
-    sep = "|:--|:--|" + "--:|" * len(columns) + "--:|"
-    rows = [head, sep]
-    # order tactics by total solved, descending
-    for t in sorted(tactics, key=lambda x: totals[x][0], reverse=True):
+    shared = [s for s in suites if s not in home]
+    order = sorted(tactics, key=lambda x: totals[x][0], reverse=True)
+
+    def version(t: str) -> str:
         info = man.get(t, {})
         tc = info.get("toolchain", "?").replace("leanprover/lean4:", "")
         commit = info.get("resolved_commit", "?")
         build = info.get("build_status", "OK")
         if build in ("OK", "CACHED"):
-            ver = f"`{tc}` @ `{commit}`" + (" _(cached)_" if build == "CACHED" else "")
-        else:
-            ver = f"`{tc}` **{build}**"
-        cells = " | ".join(f"{per[t][s][0]}/{per[t][s][1]}" for s in columns if s != "Home turf")
-        if home:
-            home_ok = sum(per[t][s][0] for s in home)
-            home_n = sum(per[t][s][1] for s in home)
-            cells += f" | {home_ok}/{home_n}"
-        sol, tot = totals[t]
-        rows.append(f"| `{t}` | {ver} | {cells} | **{sol}/{tot}** |")
+            return f"`{tc}` @ `{commit}`" + (" _(cached)_" if build == "CACHED" else "")
+        return f"`{tc}` **{build}**"
+
+    rows = []
+    if shared:
+        rows.append("### Shared benchmarks\n")
+        rows.append("| Tactic | Version | " + " | ".join(shared) + " | **Shared solved** |")
+        rows.append("|:--|:--|" + "--:|" * len(shared) + "--:|")
+        for t in order:
+            cells = " | ".join(f"{per[t][s][0]}/{per[t][s][1]}" for s in shared)
+            ok, n = sum(per[t][s][0] for s in shared), sum(per[t][s][1] for s in shared)
+            rows.append(f"| `{t}` | {version(t)} | {cells} | **{ok}/{n}** |")
+
+    if home:
+        rows.append("\n### Home turf · 50 goals per source\n")
+        labels = [SUITE_LABELS.get(s, s) for s in home]
+        rows.append("| Tactic | " + " | ".join(labels) + " | **Home solved** | **All solved** |")
+        rows.append("|:--|" + "--:|" * (len(home) + 2))
+        for t in order:
+            cells = " | ".join(f"{per[t][s][0]}/{per[t][s][1]}" for s in home)
+            home_ok, home_n = sum(per[t][s][0] for s in home), sum(per[t][s][1] for s in home)
+            sol, tot = totals[t]
+            rows.append(f"| `{t}` | {cells} | **{home_ok}/{home_n}** | **{sol}/{tot}** |")
 
     note = ("\n_Each tactic runs in an isolated Lake project on its **latest default branch** and that "
             "branch's own Lean toolchain (tracked live). Cells show theorems **solved / total**; "
             "cross-version numbers can shift with mathlib changes, not only tactic quality. "
-            "Home turf groups curated goals from the tactic repositories; the report shows each suite._")
+            "Home turf goals come from the tactic repositories; Hammer's category includes "
+            "Duper dependency tests. The report gives source links and per-goal results._")
     link = f"\n\n**[Full interactive report →]({report_url})**" if report_url else ""
     return "\n".join(rows) + "\n" + note + link + "\n"
 

@@ -1,5 +1,6 @@
 """Small regression checks for published benchmark comparisons."""
 import unittest
+from pathlib import Path
 
 from merge_results import emit_markdown, progress, snapshot
 
@@ -28,13 +29,25 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(s["suites"]["S"]["auto"]["a"], "OK")
         self.assertEqual(s["statements"]["S"]["a"], "True")
 
-    def test_readme_groups_home_suites(self):
+    def test_readme_shows_each_home_category(self):
         data = {"NNG4": {"auto": {"x": ("1", "OK", "True")}},
                 "AutoHome": {"auto": {"a": ("1", "OK", "True")}},
                 "SmtHome": {"auto": {"b": ("1", "FAIL", "False")}}}
         md = emit_markdown(data, ["auto"], {})
-        self.assertIn("| NNG4 | Home turf | **Solved** |", md)
-        self.assertIn("| 1/1 | 1/2 | **2/3** |", md)
+        self.assertIn("### Shared benchmarks", md)
+        self.assertIn("### Home turf · 50 goals per source", md)
+        self.assertIn("| Tactic | lean-auto | lean-smt | **Home solved** | **All solved** |", md)
+        self.assertIn("| `auto` | 1/1 | 0/1 | **1/2** | **2/3** |", md)
+
+    def test_home_turf_corpus_has_five_source_linked_categories(self):
+        root = Path(__file__).resolve().parents[1] / "BlasterBenchmarks" / "Home"
+        for category in ("Blaster", "Smt", "Auto", "Aesop", "Hammer"):
+            goals = sorted((root / category).glob("*.lean"))
+            self.assertEqual(len(goals), 50, category)
+            for goal in goals:
+                source = goal.read_text(encoding="utf-8")
+                self.assertIn("https://github.com/", source, goal.name)
+                self.assertEqual(source.count("theorem "), 1, goal.name)
 
 
 if __name__ == "__main__":

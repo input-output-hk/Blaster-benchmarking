@@ -1,15 +1,17 @@
 # Home turf goals
 
-These are small, portable goals selected from the tactic projects' own tests or documentation. Each `.lean` file links to the upstream source revision. The harness replaces its `:= by sorry` proof with every tactic, in that tactic's isolated Lake project. A source project's imports, local lemmas, and tactic-specific hints are deliberately omitted so the statement can be offered to all tactics.
+The five suites contain 50 source-linked goals each. Every tactic runs every suite in its own isolated Lake project, so each tactic faces the others on each source's "home turf". Each `.lean` file links to a pinned upstream source line. The harness replaces its `:= by sorry` proof with the tactic under test.
 
-| Suite | Upstream source | Goals |
+| Suite | Source | Goals |
 | --- | --- | ---: |
-| BlasterHome | Lean-blaster `Tests/FixedIssues` | 3 |
-| SmtHome | lean-smt `Test/Prop` and `Test/Unit` | 3 |
-| AutoHome | lean-auto `Test/Test_Regression.lean` | 3 |
-| AesopHome | Aesop `AesopTest` | 3 |
-| HammerHome | LeanHammer `README.md` | 1 |
+| BlasterHome | Lean-blaster tests (`FixedIssues` and `Smt`) | 50 |
+| SmtHome | lean-smt tests | 50 |
+| AutoHome | lean-auto tests | 50 |
+| AesopHome | Aesop tests | 50 |
+| HammerHome | LeanHammer README (1) and Duper tests (49) | 50 |
 
-LeanHammer currently publishes a smoke example in its repository rather than a separate theorem test suite. `HammerHome` includes that one goal only; it is not a claim that LeanHammer's coverage is limited to this example. The other suites are also samples, not complete upstream test suites.
+LeanHammer's repository does not publish a theorem test suite. Its README includes one smoke example; the remaining 49 goals come from Duper, a proof search dependency named by LeanHammer. The report labels that source explicitly.
+
+The goals are adapted to stand alone across toolchains. Local imports, declarations, theorem-name references, and tactic-specific hints from the upstream test files are omitted, which can change the proof environment. A successful local elaboration check confirms the statement is well formed on the harness's Lean version; it does not guarantee that each tactic can solve it or that it elaborates unchanged on every tactic's toolchain. Those outcomes are measured by the weekly run.
 
 The report compares solved status on the same suite, goal name, and statement across two runs. Newly added or edited goals are counted separately from progress. A `snapshot.json` on `gh-pages` supplies the previous published run; the compressed initial fallback snapshot represents the October 19, 2026 benchmark run.
