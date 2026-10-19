@@ -33,6 +33,11 @@ BENCHMARK_FILES=(
     "Verina:BlasterBenchmarks/Verina:Verina:20:taskdir"
     "UPLC:BlasterBenchmarks/UPLC/Width:UPLCWidth:90:taskdir"
     "UPLC:BlasterBenchmarks/UPLC/Depth:UPLCDepth:90:taskdir"
+    "Home:BlasterBenchmarks/Home/Blaster:BlasterHome:20:taskdir"
+    "Home:BlasterBenchmarks/Home/Smt:SmtHome:20:taskdir"
+    "Home:BlasterBenchmarks/Home/Auto:AutoHome:20:taskdir"
+    "Home:BlasterBenchmarks/Home/Aesop:AesopHome:20:taskdir"
+    "Home:BlasterBenchmarks/Home/Hammer:HammerHome:20:taskdir"
 )
 
 # Tactics to test

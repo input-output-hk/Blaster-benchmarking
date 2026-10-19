@@ -181,8 +181,13 @@ get_all_theorems() {
 list_benchmarks() {
     log_info "Available benchmarks:"
     for spec in "${BENCHMARK_FILES[@]}"; do
-        IFS=':' read -r import_path file_path display_name timeout <<< "$spec"
-        if [[ -f "$file_path" ]]; then
+        IFS=':' read -r import_path file_path display_name timeout mode <<< "$spec"
+        if [[ "$mode" == "taskdir" && -d "$file_path" ]]; then
+            local theorem_count
+            theorem_count=$(find "$file_path" -maxdepth 1 -type f -name '*.lean' | wc -l | tr -d ' ')
+            echo -e "  ${GREEN}✓${NC} $display_name (${theorem_count} tasks, timeout: ${timeout}s)"
+            log_verbose "    Directory: $file_path"
+        elif [[ -f "$file_path" ]]; then
             local theorem_count=$(get_all_theorems "$file_path" | grep -c '^' || echo 0)
             echo -e "  ${GREEN}✓${NC} $display_name (${theorem_count} theorems, timeout: ${timeout}s)"
             log_verbose "    File: $file_path"
