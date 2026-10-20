@@ -55,6 +55,34 @@ hash_stdin() {
 # that suite, not the whole set).
 source "$REPO_ROOT/benchmarks/benchmark_config.sh" 2>/dev/null || true
 
+# A CI matrix job can run a named subset of suites. Validate the allowlist so a
+# typo cannot silently produce a partial comparison.
+if [[ -n "${BENCHMARK_SUITES:-}" ]]; then
+    [[ "$BENCHMARK_SUITES" =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]] || {
+        echo "Invalid BENCHMARK_SUITES list: $BENCHMARK_SUITES" >&2; exit 2;
+    }
+    IFS=',' read -r -a requested_suites <<< "$BENCHMARK_SUITES"
+    selected_suites=()
+    for name in "${requested_suites[@]}"; do
+        [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid benchmark suite: $name" >&2; exit 2; }
+        found=0
+        for spec in "${BENCHMARK_FILES[@]}"; do
+            IFS=':' read -r _imp _file display_name _timeout _mode <<< "$spec"
+            if [[ "$display_name" == "$name" ]]; then
+                for selected in "${selected_suites[@]}"; do
+                    [[ "$selected" != "$spec" ]] || { echo "Duplicate benchmark suite: $name" >&2; exit 2; }
+                done
+                selected_suites+=("$spec")
+                found=1
+                break
+            fi
+        done
+        [[ "$found" -eq 1 ]] || { echo "Unknown benchmark suite: $name" >&2; exit 2; }
+    done
+    BENCHMARK_FILES=("${selected_suites[@]}")
+    echo "Selected ${#BENCHMARK_FILES[@]} suite(s): $BENCHMARK_SUITES"
+fi
+
 # Content hash of a single suite (its .lean file, or every .lean under a taskdir).
 # Args: file_path mode   (mode = stmt | taskdir)
 suite_hash() {
