@@ -25,6 +25,15 @@ RESULTS="${BENCH_RESULTS:-$HERE/results}"
 MANIFEST="$RESULTS/manifest.tsv"
 TIMEOUT="${TIMEOUT:-20}"
 
+# A PR run may benchmark a fork's exact head commit. These values are written to
+# a generated Lake file, so reject anything outside a GitHub URL and safe ref.
+if [[ -n "${BLASTER_REPO_URL:-}" && ! "$BLASTER_REPO_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$ ]]; then
+    echo "Invalid BLASTER_REPO_URL" >&2; exit 2
+fi
+if [[ -n "${BLASTER_REF:-}" && ! "$BLASTER_REF" =~ ^[A-Za-z0-9_./-]+$ ]]; then
+    echo "Invalid BLASTER_REF" >&2; exit 2
+fi
+
 # --- result caching ---
 # Bump CACHE_VERSION whenever the harness's test generation changes in a way that
 # would alter results, to invalidate every cached entry.
@@ -61,6 +70,10 @@ suite_hash() {
 # Resolve a branch's HEAD commit without cloning. Echoes short sha, or "" on failure.
 resolve_commit() {
     local url="$1" branch="$2" line
+    if [[ "$branch" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "${branch:0:9}"
+        return
+    fi
     line="$(git ls-remote "$url" "refs/heads/$branch" 2>/dev/null | head -1)"
     echo "${line:0:9}"
 }
@@ -93,7 +106,7 @@ latest_stable_mathlib_tag() {
 #                   when a branch renamed its module namespace (blaster: Solver.* -> Blaster.*).
 # (repo-backed toolchains are fetched live from the branch -> "track moving branch")
 TOOLS=(
-    "blaster|Blaster|https://github.com/input-output-hk/Lean-blaster|main|blaster;blaster (only-optimize: 1)|Blaster.Command.Tactic|Blaster.Command.Tactic;Blaster.Command.Tactic"
+    "blaster|Blaster|${BLASTER_REPO_URL:-https://github.com/input-output-hk/Lean-blaster}|${BLASTER_REF:-main}|blaster;blaster (only-optimize: 1)|Blaster.Command.Tactic|Blaster.Command.Tactic;Blaster.Command.Tactic"
     "smt|smt|https://github.com/ufmg-smite/lean-smt.git|main|smt +model|Smt|Smt"
     "hammer|Hammer|https://github.com/JOSHCLUNE/LeanHammer.git|main|hammer|Hammer|"
     "auto|auto|https://github.com/leanprover-community/lean-auto.git|main|auto|Auto.Tactic|"
