@@ -11,10 +11,10 @@ from pathlib import Path
 
 
 SHARD_SUITES = {
-    "uplc-width": ("UPLCWidth",),
-    "uplc-depth": ("UPLCDepth",),
-    "classic": ("NNG4", "STG4", "ITL4", "MiniF2F", "Verina"),
-    "home": ("BlasterHome", "SmtHome", "AutoHome", "AesopHome", "HammerHome"),
+    "mini-f2f": ("MiniF2F",),
+    "verina-uplc": ("Verina", "UPLCDepth", "UPLCWidth"),
+    "nng-logic": ("NNG4", "STG4", "ITL4", "AutoHome"),
+    "home-rest": ("BlasterHome", "SmtHome", "AesopHome", "HammerHome"),
 }
 IDENTITY = ("tool", "toolchain", "branch", "resolved_commit", "tactic")
 
