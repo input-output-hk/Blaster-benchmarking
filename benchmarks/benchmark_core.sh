@@ -119,11 +119,14 @@ process_theorem() {
     # Test each tactic
     local results=""
     for tactic in "${TACTICS[@]}"; do
+        local tactic_start=$(date +%s)
+        log_progress "suite=$benchmark_name theorem=$theorem_name tactic=$tactic start timeout=${timeout}s"
         local result=$(test_tactic "" "$benchmark_name" "$theorem_name" \
                                    "$statement" "$tactic" "$context" \
                                    "$file_hash" "$timeout" 2>&1)
 
         IFS='|' read -r time status <<< "$result"
+        log_progress "suite=$benchmark_name theorem=$theorem_name tactic=$tactic done status=$status elapsed=$(($(date +%s)-tactic_start))s"
         results="${results},${time},${status}"
 
         # Show result immediately (always show unless quiet)
@@ -243,15 +246,21 @@ run_task_dir_benchmark() {
         current=$((current+1))
         local task_name=$(basename "$tf" .lean)
         local file_hash=$(get_file_hash "$tf")
+        local task_start=$(date +%s)
+        log_progress "suite=$display_name goal=$current/${#files[@]} theorem=$task_name start"
         [[ $QUIET -eq 0 ]] && echo -e "${BLUE}[$current/${#files[@]}]${NC} ${YELLOW}$task_name${NC}"
         local results=""
         for tactic in "${TACTICS[@]}"; do
+            local tactic_start=$(date +%s)
+            log_progress "suite=$display_name theorem=$task_name tactic=$tactic start timeout=${timeout}s"
             local r=$(test_task_file "$display_name" "$tf" "$task_name" "$tactic" "$file_hash" "$timeout")
             IFS='|' read -r time status <<< "$r"
+            log_progress "suite=$display_name theorem=$task_name tactic=$tactic done status=$status elapsed=$(($(date +%s)-tactic_start))s"
             results="${results},${time},${status}"
             [[ $QUIET -eq 0 ]] && echo -e "    ${tactic}: ${status} ${time}" >&2
         done
         echo "$display_name,$task_name,\"$task_name\"$results" >> "$csv"
+        log_progress "suite=$display_name goal=$current/${#files[@]} theorem=$task_name done elapsed=$(($(date +%s)-task_start))s"
     done
     log_success "Completed $display_name: ${#files[@]} tasks processed"
 }
@@ -418,6 +427,8 @@ WRAPPER_EOF2
         local current=0
         for theorem in "${theorems[@]}"; do
             current=$((current + 1))
+            local goal_start=$(date +%s)
+            log_progress "suite=$display_name goal=$current/$total theorem=$theorem start"
 
             # Show theorem being processed
             if [[ $QUIET -eq 0 ]]; then
@@ -484,6 +495,7 @@ WRAPPER_EOF2
 
             # Write CSV row atomically
             echo "$display_name,$theorem,\"$statement\"$results" >> "$csv"
+            log_progress "suite=$display_name goal=$current/$total theorem=$theorem done elapsed=$(($(date +%s)-goal_start))s"
 
             # Blank line between theorems
             [[ $QUIET -eq 0 ]] && echo ""
@@ -496,6 +508,8 @@ WRAPPER_EOF2
 
         for theorem in "${theorems[@]}"; do
             current=$((current + 1))
+            local goal_start=$(date +%s)
+            log_progress "suite=$display_name goal=$current/$total theorem=$theorem start"
 
             # Show theorem being processed (always show, not just verbose)
             if [[ $QUIET -eq 0 ]]; then
@@ -516,6 +530,7 @@ WRAPPER_EOF2
             else
                 log_warning "  Empty result for theorem: $theorem"
             fi
+            log_progress "suite=$display_name goal=$current/$total theorem=$theorem done elapsed=$(($(date +%s)-goal_start))s"
 
             # Blank line between theorems (not in quiet mode)
             [[ $QUIET -eq 0 ]] && echo ""
@@ -543,7 +558,12 @@ run_benchmarks() {
     echo ""
     
     for spec in "${BENCHMARK_FILES[@]}"; do
+        local _imp _file display_name _timeout _mode
+        IFS=':' read -r _imp _file display_name _timeout _mode <<< "$spec"
+        local suite_start=$(date +%s)
+        log_progress "suite=$display_name start"
         run_benchmark_file "$spec" || log_warning "Benchmark failed, continuing..."
+        log_progress "suite=$display_name done elapsed=$(($(date +%s)-suite_start))s"
     done
     
     log_success "All benchmarks complete"

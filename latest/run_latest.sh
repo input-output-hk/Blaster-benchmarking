@@ -193,6 +193,33 @@ manifest_put() {
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >> "$MANIFEST"
 }
 
+# Long Lake stages write detailed output to files. Emit a live heartbeat so an
+# Actions log still says which stage is active and how long it has taken.
+run_logged_stage() {  # label logfile command...
+    local label="$1" logfile="$2"; shift 2
+    local start=$(date +%s) command_pid heartbeat_pid rc
+    printf '[stage] %s %s start (log: %s)\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$logfile"
+    "$@" > "$logfile" 2>&1 & command_pid=$!
+    (
+        while kill -0 "$command_pid" 2>/dev/null; do
+            sleep 30
+            kill -0 "$command_pid" 2>/dev/null || break
+            printf '[stage] %s %s still running elapsed=%ss\n' \
+                "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$(($(date +%s)-start))"
+        done
+    ) & heartbeat_pid=$!
+    wait "$command_pid"; rc=$?
+    kill "$heartbeat_pid" 2>/dev/null || true
+    wait "$heartbeat_pid" 2>/dev/null || true
+    printf '[stage] %s %s done exit=%s elapsed=%ss\n' \
+        "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$rc" "$(($(date +%s)-start))"
+    if [[ "$rc" -ne 0 ]]; then
+        echo "  Last 50 lines of $logfile:"
+        tail -n 50 "$logfile" || true
+    fi
+    return "$rc"
+}
+
 # Write one manifest row per tactic in the current project (uses run_tool's locals
 # via bash dynamic scope: dir, tc, branch_label, commit_label, tactics_str).
 put_rows() {  # status
@@ -256,10 +283,14 @@ run_tool() {
         # restrict this benchmark run to the missing suites
         { printf 'BENCHMARK_FILES=('; for spec in "${missing_specs[@]}"; do printf '"%s" ' "$spec"; done; echo ')'; } >> "$proj/config.sh"
         echo "  toolchain: $tc"
-        ( cd "$proj"
-          echo "  lake update..."; lake update > update.log 2>&1
-          echo "  cache get...";   lake exe cache get > cache.log 2>&1 || true
-          if [[ -n "$module" ]]; then echo "  build ${module}..."; lake build "${module}" > build.log 2>&1; else echo "  (no tool build)"; fi )
+        ( cd "$proj" || exit 1
+          run_logged_stage "lake update ($dir)" update.log lake update || exit $?
+          run_logged_stage "cache get ($dir)" cache.log lake exe cache get || echo "  cache get failed; continuing with build"
+          if [[ -n "$module" ]]; then
+              run_logged_stage "lake build $module ($dir)" build.log lake build "$module"
+          else
+              echo "  (no tool build)"
+          fi )
         local build_rc=$?
         if [[ -n "$url" && ( -z "$commit" || "$commit" == "?" ) ]]; then
             commit="$(python3 -c "import json
@@ -271,7 +302,18 @@ except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label
         local extra="" lib
         for lib in "$proj"/.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.{dylib,so}; do [[ -f "$lib" ]] && extra="$extra --load-dynlib=$lib"; done
         echo "  running ${#missing_specs[@]} suite(s)...${extra:+ (cvc5 FFI)}"
-        ( cd "$proj" && LEAN_EXTRA_ARGS="$extra" QUIET=1 "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" > bench.log 2>&1 )
+        local bench_start=$(date +%s)
+        printf '[stage] %s benchmark $dir start\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+        ( cd "$proj" && LEAN_EXTRA_ARGS="$extra" QUIET=1 BENCH_PROGRESS="${BENCH_PROGRESS:-1}" \
+            "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" 2>&1 | tee bench.log )
+        local bench_rc=$?
+        printf '[stage] %s benchmark %s done exit=%s elapsed=%ss\n' \
+            "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$dir" "$bench_rc" "$(($(date +%s)-bench_start))"
+        if [[ "$bench_rc" -ne 0 ]]; then
+            echo "  BENCHMARK FAILED (see $proj/bench.log)"
+            put_rows "BENCH_FAIL"
+            return
+        fi
         # save each freshly-run suite to its own cache entry (identity must be stable)
         if [[ -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
             for spec in "${missing_specs[@]}"; do

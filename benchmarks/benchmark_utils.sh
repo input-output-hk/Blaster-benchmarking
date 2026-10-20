@@ -25,6 +25,12 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $*" >&2
 }
 
+# Stable, timestamped progress lines for CI logs, even when QUIET=1.
+log_progress() {
+    [[ "${BENCH_PROGRESS:-0}" == "1" ]] || return 0
+    printf '[progress] %s %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
+}
+
 # Progress indicator with ETA
 # Args: current total start_time description
 show_progress() {
