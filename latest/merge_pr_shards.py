@@ -10,12 +10,17 @@ import sys
 from pathlib import Path
 
 
-SHARDS = ("uplc-width", "uplc-depth", "classic", "home")
+SHARD_SUITES = {
+    "uplc-width": ("UPLCWidth",),
+    "uplc-depth": ("UPLCDepth",),
+    "classic": ("NNG4", "STG4", "ITL4", "MiniF2F", "Verina"),
+    "home": ("BlasterHome", "SmtHome", "AutoHome", "AesopHome", "HammerHome"),
+}
 IDENTITY = ("tool", "toolchain", "branch", "resolved_commit", "tactic")
 
 
 def merge(shards_dir: Path, output: Path, pr_number: str) -> None:
-    expected = {f"pr-benchmark-shard-{pr_number}-{name}" for name in SHARDS}
+    expected = {f"pr-benchmark-shard-{pr_number}-{name}" for name in SHARD_SUITES}
     actual = {p.name for p in shards_dir.iterdir() if p.is_dir()}
     if actual != expected:
         raise ValueError(f"Shard artifacts differ: missing={sorted(expected - actual)}, extra={sorted(actual - expected)}")
@@ -27,7 +32,8 @@ def merge(shards_dir: Path, output: Path, pr_number: str) -> None:
     headers: list[str] | None = None
     env_errors: list[str] = []
 
-    for shard_name in sorted(expected):
+    for shard_type in SHARD_SUITES:
+        shard_name = f"pr-benchmark-shard-{pr_number}-{shard_type}"
         shard = shards_dir / shard_name
         manifest_path = shard / "manifest.tsv"
         with manifest_path.open(newline="", encoding="utf-8") as f:
@@ -53,8 +59,11 @@ def merge(shards_dir: Path, output: Path, pr_number: str) -> None:
                 manifests[tactic] = row
 
         csvs = sorted((shard / "blaster").glob("*_results.csv"))
-        if not csvs:
-            raise ValueError(f"No suite CSVs in {shard_name}")
+        expected_csvs = {f"{suite}_results.csv" for suite in SHARD_SUITES[shard_type]}
+        actual_csvs = {p.name for p in csvs}
+        if actual_csvs != expected_csvs:
+            raise ValueError(f"{shard_name}: missing CSVs={sorted(expected_csvs - actual_csvs)}, "
+                             f"extra CSVs={sorted(actual_csvs - expected_csvs)}")
         for csv_path in csvs:
             destination = result_dir / csv_path.name
             if destination.exists():
