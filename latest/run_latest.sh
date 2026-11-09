@@ -24,6 +24,7 @@ BASH5="$(command -v /opt/homebrew/bin/bash || command -v bash)"
 RESULTS="${BENCH_RESULTS:-$HERE/results}"
 MANIFEST="$RESULTS/manifest.tsv"
 TIMEOUT="${TIMEOUT:-20}"
+source "$HERE/run_support.sh"
 
 # A PR run may benchmark a fork's exact head commit. These values are written to
 # a generated Lake file, so reject anything outside a GitHub URL and safe ref.
@@ -162,13 +163,13 @@ scaffold() {
     local tc mathlib_req
     if [[ -n "$url" ]]; then
         # repo-backed: toolchain fetched live from the tool's branch; mathlib matches it
-        tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+        tc="$(fetch_toolchain "$(raw_toolchain_url "$url" "$branch")")" || return 1
         mathlib_req='def leanVersion : String := s!"v{Lean.versionString}"'$'\n''require "leanprover-community" / mathlib @ git leanVersion'
     else
         # repo-less baselines: latest stable mathlib tag drives the toolchain
         local tag; tag="$(latest_stable_mathlib_tag)"
         [[ -z "$tag" ]] && { echo "  ! could not resolve latest mathlib tag" >&2; return 1; }
-        tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$tag/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
+        tc="$(fetch_toolchain "https://raw.githubusercontent.com/leanprover-community/mathlib4/$tag/lean-toolchain")" || return 1
         mathlib_req="require \"leanprover-community\" / mathlib @ git \"$tag\""
     fi
     [[ -z "$tc" ]] && { echo "  ! could not fetch toolchain for $dir" >&2; return 1; }
@@ -221,33 +222,6 @@ manifest_put() {
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >> "$MANIFEST"
 }
 
-# Long Lake stages write detailed output to files. Emit a live heartbeat so an
-# Actions log still says which stage is active and how long it has taken.
-run_logged_stage() {  # label logfile command...
-    local label="$1" logfile="$2"; shift 2
-    local start=$(date +%s) command_pid heartbeat_pid rc
-    printf '[stage] %s %s start (log: %s)\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$logfile"
-    "$@" > "$logfile" 2>&1 & command_pid=$!
-    (
-        while kill -0 "$command_pid" 2>/dev/null; do
-            sleep 30
-            kill -0 "$command_pid" 2>/dev/null || break
-            printf '[stage] %s %s still running elapsed=%ss\n' \
-                "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$(($(date +%s)-start))"
-        done
-    ) & heartbeat_pid=$!
-    wait "$command_pid"; rc=$?
-    kill "$heartbeat_pid" 2>/dev/null || true
-    wait "$heartbeat_pid" 2>/dev/null || true
-    printf '[stage] %s %s done exit=%s elapsed=%ss\n' \
-        "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$rc" "$(($(date +%s)-start))"
-    if [[ "$rc" -ne 0 ]]; then
-        echo "  Last 50 lines of $logfile:"
-        tail -n 50 "$logfile" || true
-    fi
-    return "$rc"
-}
-
 # Write one manifest row per tactic in the current project (uses run_tool's locals
 # via bash dynamic scope: dir, tc, branch_label, commit_label, tactics_str).
 put_rows() {  # status
@@ -268,14 +242,14 @@ run_tool() {
     # repo-backed: branch HEAD commit + branch toolchain.
     # repo-less: latest stable mathlib tag is the identity/toolchain. reqname empty ->
     # built-in tactics "(core)"; reqname set -> mathlib-bundled package (aesop) "(via mathlib)".
-    local commit tc branch_label commit_label
+    local commit="" tc="" branch_label commit_label
     if [[ -n "$url" ]]; then
         commit="$(resolve_commit "$url" "$branch")"
-        tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+        tc="$(fetch_toolchain "$(raw_toolchain_url "$url" "$branch")")" || tc=""
         branch_label="$branch"; commit_label="$commit"
     else
         commit="$(latest_stable_mathlib_tag)"
-        [[ -n "$commit" ]] && tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$commit/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
+        [[ -n "$commit" ]] && tc="$(fetch_toolchain "https://raw.githubusercontent.com/leanprover-community/mathlib4/$commit/lean-toolchain")" || tc=""
         branch_label="stable"
         [[ -n "$reqname" ]] && commit_label="(via mathlib)" || commit_label="(core)"
     fi
@@ -290,7 +264,8 @@ run_tool() {
         IFS=':' read -r imp fp disp to mode <<< "$spec"; mode="${mode:-stmt}"
         sh="$(suite_hash "$fp" "$mode")"
         sc="$sdir/$disp/$(cache_key "$dir" "$commit" "$tc" "$tactics_str" "$sh")"
-        if [[ $can_cache -eq 1 && -f "$sc/${disp}_results.csv" ]]; then
+        if [[ $can_cache -eq 1 && -f "$sc/${disp}_results.csv" ]] && \
+            validate_suite "$sc/${disp}_results.csv" "$disp" "$REPO_ROOT/$fp" "$mode" "$tactics_str"; then
             cached_disp+=("$disp"); cached_sc+=("$sc")
         else
             missing_specs+=("$spec")
@@ -306,7 +281,7 @@ run_tool() {
     if [[ ${#missing_specs[@]} -gt 0 ]]; then
         [[ "$NO_CACHE" == "1" ]] && echo "  NO_CACHE=1 - running all ${#missing_specs[@]} suites" \
           || echo "  ${#missing_specs[@]} suite(s) to run, ${#cached_disp[@]} cached (${commit:-?} @ ${tc:-?})"
-        scaffold "$dir" "$reqname" "$url" "$branch" "$tactics_str" "$imports_str" || { put_rows "SCAFFOLD_FAIL"; return; }
+        scaffold "$dir" "$reqname" "$url" "$branch" "$tactics_str" "$imports_str" || { put_rows "SCAFFOLD_FAIL"; return 1; }
         [[ -z "$tc" ]] && tc="$(tr -d '[:space:]' < "$proj/lean-toolchain")"
         # restrict this benchmark run to the missing suites
         { printf 'BENCHMARK_FILES=('; for spec in "${missing_specs[@]}"; do printf '"%s" ' "$spec"; done; echo ')'; } >> "$proj/config.sh"
@@ -326,7 +301,7 @@ try:
  d=json.load(open('$proj/lake-manifest.json')); print(next((p['rev'][:9] for p in d['packages'] if p.get('name')=='$reqname'),'?'))
 except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label="$commit"
         fi
-        if [[ $build_rc -ne 0 ]]; then echo "  BUILD FAILED (see $proj/build.log)"; put_rows "BUILD_FAIL"; return; fi
+        if [[ $build_rc -ne 0 ]]; then echo "  BUILD FAILED (see $proj/build.log)"; put_rows "BUILD_FAIL"; return 1; fi
         local extra="" lib
         for lib in "$proj"/.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.{dylib,so}; do [[ -f "$lib" ]] && extra="$extra --load-dynlib=$lib"; done
         echo "  running ${#missing_specs[@]} suite(s)...${extra:+ (cvc5 FFI)}"
@@ -340,8 +315,16 @@ except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label
         if [[ "$bench_rc" -ne 0 ]]; then
             echo "  BENCHMARK FAILED (see $proj/bench.log)"
             put_rows "BENCH_FAIL"
-            return
+            return 1
         fi
+        # Check every expected goal before saving any freshly generated cache entry.
+        for spec in "${missing_specs[@]}"; do
+            IFS=':' read -r imp fp disp to mode <<< "$spec"
+            if ! validate_suite "$RESULTS/$dir/${disp}_results.csv" "$disp" "$REPO_ROOT/$fp" "${mode:-stmt}" "$tactics_str"; then
+                put_rows "BENCH_FAIL"
+                return 1
+            fi
+        done
         # save each freshly-run suite to its own cache entry (identity must be stable)
         if [[ -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
             for spec in "${missing_specs[@]}"; do
@@ -364,6 +347,14 @@ except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label
         [[ -f "${cached_sc[$i]}/env.tsv" ]] && cat "${cached_sc[$i]}/env.tsv" >> "$RESULTS/$dir/env_errors.tsv"
     done
 
+    # Copy failures must not turn a valid cache hit into a successful empty report.
+    for spec in "${BENCHMARK_FILES[@]}"; do
+        IFS=':' read -r imp fp disp to mode <<< "$spec"
+        if ! validate_suite "$RESULTS/$dir/${disp}_results.csv" "$disp" "$REPO_ROOT/$fp" "${mode:-stmt}" "$tactics_str"; then
+            put_rows "BENCH_FAIL"
+            return 1
+        fi
+    done
     if [[ ${#missing_specs[@]} -eq 0 ]]; then put_rows "CACHED"; else put_rows "OK"; fi
     echo "  done: results in $RESULTS/$dir (${#cached_disp[@]} cached, ${#missing_specs[@]} run)"
 }
@@ -378,6 +369,8 @@ for a in "$@"; do
 done
 [[ ${#WANT[@]} -eq 0 ]] && { for r in "${TOOLS[@]}"; do WANT+=("$r"); done; }
 
-for row in "${WANT[@]}"; do run_tool "$row"; done
+run_rc=0
+for row in "${WANT[@]}"; do run_tool "$row" || run_rc=1; done
 
-echo; echo "===== MANIFEST ====="; column -t -s$'\t' "$MANIFEST"
+echo; echo "===== MANIFEST ====="; column -t -s$'\t' "$MANIFEST" || cat "$MANIFEST"
+exit "$run_rc"
