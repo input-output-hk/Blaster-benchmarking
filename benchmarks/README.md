@@ -402,6 +402,30 @@ When adding new features:
 5. Update main command handling in `benchmark.sh`
 6. Document in this README
 
+## Solver-sensitive caches
+
+The latest-branch runner and local theorem cache include the detected external
+Z3 version for blaster, auto, smt, and hammer. CI may set
+`BENCH_SOLVER_ID=z3-5.4.0` (or another installed version); the harness verifies it
+against `z3 --version` before using any cache. Without this setting, the version
+is detected locally. An unknown version disables solver-sensitive cache reads
+and writes, and legacy Z3 cache keys are never used as a fallback. Aesop and
+built-in baseline tactic caches retain their existing keys.
+
+`NO_CACHE=1` forces suite and theorem execution, including local theorem caches.
+The latest runner saves `results/<tool>/solver_environment.json` alongside the
+unchanged CSV and manifest formats, and retains it in each new suite cache. The
+sidecar records external Z3 separately from packaged cvc5 dependency revisions
+from the project's Lake manifest; it does not describe cvc5 as an external Z3
+installation. Empty cvc5 package records mean no local manifest information was
+available (for example, a legacy non-Z3 cache hit without a local project).
+
+Run network-free harness tests from the repository root:
+
+```bash
+python3 -m unittest discover -s latest -p 'test_*.py'
+```
+
 ## License
 
 [Add your license here]

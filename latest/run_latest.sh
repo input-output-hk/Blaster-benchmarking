@@ -6,7 +6,7 @@
 # not pinned). Results + a version manifest land under latest/results/.
 #
 # Results are cached per tool keyed on (resolved commit + toolchain + benchmark
-# source hash + CACHE_VERSION): if a tool's branch HEAD has not moved since its last
+# source hash + external solver identity + CACHE_VERSION): if a tool's branch HEAD has not moved since its last
 # successful run, its cached CSVs are reused and the expensive build+run is skipped.
 # Set NO_CACHE=1 to force a full re-run. Cache lives in latest/results_cache/ (in CI,
 # back that dir with actions/cache).
@@ -24,6 +24,8 @@ BASH5="$(command -v /opt/homebrew/bin/bash || command -v bash)"
 RESULTS="${BENCH_RESULTS:-$HERE/results}"
 MANIFEST="$RESULTS/manifest.tsv"
 TIMEOUT="${TIMEOUT:-20}"
+source "$HERE/run_support.sh"
+source "$REPO_ROOT/benchmarks/solver_environment.sh"
 
 # A PR run may benchmark a fork's exact head commit. These values are written to
 # a generated Lake file, so reject anything outside a GitHub URL and safe ref.
@@ -109,7 +111,11 @@ resolve_commit() {
 # Per-suite cache key: tool identity (dir+commit+toolchain+tactics) + that suite's
 # own content hash. Adding/editing one suite changes only its key.
 cache_key() {  # dir commit toolchain tactics suite_hash
-    printf '%s|%s|%s|%s|%s|%s' "$1" "$2" "$3" "$4" "$5" "$CACHE_VERSION" | hash_stdin
+    {
+        printf '%s|%s|%s|%s|%s|%s' "$1" "$2" "$3" "$4" "$5" "$CACHE_VERSION"
+        # Preserve existing caches only for tools which do not use external Z3.
+        if solver_uses_z3 "$1"; then printf '|solver=%s' "${SOLVER_CACHE_ID:-unknown}"; fi
+    } | hash_stdin
 }
 
 # Newest STABLE (non-rc) mathlib release tag, e.g. v4.31.0. Drives the baselines
@@ -162,13 +168,13 @@ scaffold() {
     local tc mathlib_req
     if [[ -n "$url" ]]; then
         # repo-backed: toolchain fetched live from the tool's branch; mathlib matches it
-        tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+        tc="$(fetch_toolchain "$(raw_toolchain_url "$url" "$branch")")" || return 1
         mathlib_req='def leanVersion : String := s!"v{Lean.versionString}"'$'\n''require "leanprover-community" / mathlib @ git leanVersion'
     else
         # repo-less baselines: latest stable mathlib tag drives the toolchain
         local tag; tag="$(latest_stable_mathlib_tag)"
         [[ -z "$tag" ]] && { echo "  ! could not resolve latest mathlib tag" >&2; return 1; }
-        tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$tag/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
+        tc="$(fetch_toolchain "https://raw.githubusercontent.com/leanprover-community/mathlib4/$tag/lean-toolchain")" || return 1
         mathlib_req="require \"leanprover-community\" / mathlib @ git \"$tag\""
     fi
     [[ -z "$tc" ]] && { echo "  ! could not fetch toolchain for $dir" >&2; return 1; }
@@ -221,33 +227,6 @@ manifest_put() {
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >> "$MANIFEST"
 }
 
-# Long Lake stages write detailed output to files. Emit a live heartbeat so an
-# Actions log still says which stage is active and how long it has taken.
-run_logged_stage() {  # label logfile command...
-    local label="$1" logfile="$2"; shift 2
-    local start=$(date +%s) command_pid heartbeat_pid rc
-    printf '[stage] %s %s start (log: %s)\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$logfile"
-    "$@" > "$logfile" 2>&1 & command_pid=$!
-    (
-        while kill -0 "$command_pid" 2>/dev/null; do
-            sleep 30
-            kill -0 "$command_pid" 2>/dev/null || break
-            printf '[stage] %s %s still running elapsed=%ss\n' \
-                "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$(($(date +%s)-start))"
-        done
-    ) & heartbeat_pid=$!
-    wait "$command_pid"; rc=$?
-    kill "$heartbeat_pid" 2>/dev/null || true
-    wait "$heartbeat_pid" 2>/dev/null || true
-    printf '[stage] %s %s done exit=%s elapsed=%ss\n' \
-        "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$label" "$rc" "$(($(date +%s)-start))"
-    if [[ "$rc" -ne 0 ]]; then
-        echo "  Last 50 lines of $logfile:"
-        tail -n 50 "$logfile" || true
-    fi
-    return "$rc"
-}
-
 # Write one manifest row per tactic in the current project (uses run_tool's locals
 # via bash dynamic scope: dir, tc, branch_label, commit_label, tactics_str).
 put_rows() {  # status
@@ -264,25 +243,27 @@ run_tool() {
     local proj="$HERE/projects/$dir"
     echo "==================== $dir (${branch:-latest stable}) ===================="
 
+    init_solver_environment "$dir" || return 1
+
     # --- identity resolution (no clone / no build) ---
     # repo-backed: branch HEAD commit + branch toolchain.
     # repo-less: latest stable mathlib tag is the identity/toolchain. reqname empty ->
     # built-in tactics "(core)"; reqname set -> mathlib-bundled package (aesop) "(via mathlib)".
-    local commit tc branch_label commit_label
+    local commit="" tc="" branch_label commit_label
     if [[ -n "$url" ]]; then
         commit="$(resolve_commit "$url" "$branch")"
-        tc="$(curl -fsSL "$(raw_toolchain_url "$url" "$branch")" 2>/dev/null | tr -d '[:space:]')"
+        tc="$(fetch_toolchain "$(raw_toolchain_url "$url" "$branch")")" || tc=""
         branch_label="$branch"; commit_label="$commit"
     else
         commit="$(latest_stable_mathlib_tag)"
-        [[ -n "$commit" ]] && tc="$(curl -fsSL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$commit/lean-toolchain" 2>/dev/null | tr -d '[:space:]')"
+        [[ -n "$commit" ]] && tc="$(fetch_toolchain "https://raw.githubusercontent.com/leanprover-community/mathlib4/$commit/lean-toolchain")" || tc=""
         branch_label="stable"
         [[ -n "$reqname" ]] && commit_label="(via mathlib)" || commit_label="(core)"
     fi
 
     # --- classify each suite: cached (per-suite key hit) vs missing ---
     local can_cache=0
-    [[ "$NO_CACHE" != "1" && -n "$commit" && -n "$tc" && "$commit" != "?" ]] && can_cache=1
+    [[ "$SOLVER_CACHE_ID" != unknown && "$NO_CACHE" != "1" && -n "$commit" && -n "$tc" && "$commit" != "?" ]] && can_cache=1
     local sdir="$CACHE_DIR/$dir"
     local cached_disp=() cached_sc=() missing_specs=()
     local spec imp fp disp to mode sh sk sc
@@ -290,7 +271,8 @@ run_tool() {
         IFS=':' read -r imp fp disp to mode <<< "$spec"; mode="${mode:-stmt}"
         sh="$(suite_hash "$fp" "$mode")"
         sc="$sdir/$disp/$(cache_key "$dir" "$commit" "$tc" "$tactics_str" "$sh")"
-        if [[ $can_cache -eq 1 && -f "$sc/${disp}_results.csv" ]]; then
+        if [[ $can_cache -eq 1 && -f "$sc/${disp}_results.csv" ]] && \
+            validate_suite "$sc/${disp}_results.csv" "$disp" "$REPO_ROOT/$fp" "$mode" "$tactics_str"; then
             cached_disp+=("$disp"); cached_sc+=("$sc")
         else
             missing_specs+=("$spec")
@@ -301,12 +283,13 @@ run_tool() {
     mkdir -p "$RESULTS/$dir"
     rm -f "$RESULTS/$dir"/*_results.csv "$RESULTS/$dir/env_errors.tsv"
     : > "$RESULTS/$dir/env_errors.tsv"
+    write_solver_environment "$RESULTS/$dir/solver_environment.json" "$proj/lake-manifest.json" || return 1
 
     # --- run only the missing suites (build the tool first) ---
     if [[ ${#missing_specs[@]} -gt 0 ]]; then
         [[ "$NO_CACHE" == "1" ]] && echo "  NO_CACHE=1 - running all ${#missing_specs[@]} suites" \
           || echo "  ${#missing_specs[@]} suite(s) to run, ${#cached_disp[@]} cached (${commit:-?} @ ${tc:-?})"
-        scaffold "$dir" "$reqname" "$url" "$branch" "$tactics_str" "$imports_str" || { put_rows "SCAFFOLD_FAIL"; return; }
+        scaffold "$dir" "$reqname" "$url" "$branch" "$tactics_str" "$imports_str" || { put_rows "SCAFFOLD_FAIL"; return 1; }
         [[ -z "$tc" ]] && tc="$(tr -d '[:space:]' < "$proj/lean-toolchain")"
         # restrict this benchmark run to the missing suites
         { printf 'BENCHMARK_FILES=('; for spec in "${missing_specs[@]}"; do printf '"%s" ' "$spec"; done; echo ')'; } >> "$proj/config.sh"
@@ -326,13 +309,14 @@ try:
  d=json.load(open('$proj/lake-manifest.json')); print(next((p['rev'][:9] for p in d['packages'] if p.get('name')=='$reqname'),'?'))
 except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label="$commit"
         fi
-        if [[ $build_rc -ne 0 ]]; then echo "  BUILD FAILED (see $proj/build.log)"; put_rows "BUILD_FAIL"; return; fi
+        if [[ $build_rc -ne 0 ]]; then echo "  BUILD FAILED (see $proj/build.log)"; put_rows "BUILD_FAIL"; return 1; fi
+        write_solver_environment "$RESULTS/$dir/solver_environment.json" "$proj/lake-manifest.json" || return 1
         local extra="" lib
         for lib in "$proj"/.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.{dylib,so}; do [[ -f "$lib" ]] && extra="$extra --load-dynlib=$lib"; done
         echo "  running ${#missing_specs[@]} suite(s)...${extra:+ (cvc5 FFI)}"
         local bench_start=$(date +%s)
         printf '[stage] %s benchmark $dir start\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-        ( cd "$proj" && LEAN_EXTRA_ARGS="$extra" QUIET=1 BENCH_PROGRESS="${BENCH_PROGRESS:-1}" \
+        ( cd "$proj" && NO_CACHE="$NO_CACHE" LEAN_EXTRA_ARGS="$extra" QUIET=1 BENCH_PROGRESS="${BENCH_PROGRESS:-1}" \
             "$BASH5" "$BENCH" run -c ./config.sh -t "$TIMEOUT" 2>&1 | tee bench.log )
         local bench_rc=$?
         printf '[stage] %s benchmark %s done exit=%s elapsed=%ss\n' \
@@ -340,16 +324,25 @@ except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label
         if [[ "$bench_rc" -ne 0 ]]; then
             echo "  BENCHMARK FAILED (see $proj/bench.log)"
             put_rows "BENCH_FAIL"
-            return
+            return 1
         fi
+        # Check every expected goal before saving any freshly generated cache entry.
+        for spec in "${missing_specs[@]}"; do
+            IFS=':' read -r imp fp disp to mode <<< "$spec"
+            if ! validate_suite "$RESULTS/$dir/${disp}_results.csv" "$disp" "$REPO_ROOT/$fp" "${mode:-stmt}" "$tactics_str"; then
+                put_rows "BENCH_FAIL"
+                return 1
+            fi
+        done
         # save each freshly-run suite to its own cache entry (identity must be stable)
-        if [[ -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
+        if [[ "$SOLVER_CACHE_ID" != unknown && -n "$commit" && "$commit" != "?" && -n "$tc" ]]; then
             for spec in "${missing_specs[@]}"; do
                 IFS=':' read -r imp fp disp to mode <<< "$spec"; mode="${mode:-stmt}"
                 [[ -f "$RESULTS/$dir/${disp}_results.csv" ]] || continue
                 sc="$sdir/$disp/$(cache_key "$dir" "$commit" "$tc" "$tactics_str" "$(suite_hash "$fp" "$mode")")"
                 mkdir -p "$sc"
                 cp "$RESULTS/$dir/${disp}_results.csv" "$sc/"
+                cp "$RESULTS/$dir/solver_environment.json" "$sc/"
                 awk -F'\t' -v d="$disp" '$1==d' "$RESULTS/$dir/env_errors.tsv" 2>/dev/null > "$sc/env.tsv"
             done
         fi
@@ -360,10 +353,21 @@ except Exception: print('?')" 2>/dev/null)"; commit="${commit:-?}"; commit_label
     # --- assemble: copy cached suites in (missing ones are already present from the run) ---
     local i
     for ((i=0; i<${#cached_disp[@]}; i++)); do
+        if [[ -f "${cached_sc[$i]}/solver_environment.json" ]]; then
+            cp "${cached_sc[$i]}/solver_environment.json" "$RESULTS/$dir/" || return 1
+        fi
         cp "${cached_sc[$i]}/${cached_disp[$i]}_results.csv" "$RESULTS/$dir/" 2>/dev/null
         [[ -f "${cached_sc[$i]}/env.tsv" ]] && cat "${cached_sc[$i]}/env.tsv" >> "$RESULTS/$dir/env_errors.tsv"
     done
 
+    # Copy failures must not turn a valid cache hit into a successful empty report.
+    for spec in "${BENCHMARK_FILES[@]}"; do
+        IFS=':' read -r imp fp disp to mode <<< "$spec"
+        if ! validate_suite "$RESULTS/$dir/${disp}_results.csv" "$disp" "$REPO_ROOT/$fp" "${mode:-stmt}" "$tactics_str"; then
+            put_rows "BENCH_FAIL"
+            return 1
+        fi
+    done
     if [[ ${#missing_specs[@]} -eq 0 ]]; then put_rows "CACHED"; else put_rows "OK"; fi
     echo "  done: results in $RESULTS/$dir (${#cached_disp[@]} cached, ${#missing_specs[@]} run)"
 }
@@ -378,6 +382,8 @@ for a in "$@"; do
 done
 [[ ${#WANT[@]} -eq 0 ]] && { for r in "${TOOLS[@]}"; do WANT+=("$r"); done; }
 
-for row in "${WANT[@]}"; do run_tool "$row"; done
+run_rc=0
+for row in "${WANT[@]}"; do run_tool "$row" || run_rc=1; done
 
-echo; echo "===== MANIFEST ====="; column -t -s$'\t' "$MANIFEST"
+echo; echo "===== MANIFEST ====="; column -t -s$'\t' "$MANIFEST" || cat "$MANIFEST"
+exit "$run_rc"
