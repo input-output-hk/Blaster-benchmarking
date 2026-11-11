@@ -1,5 +1,6 @@
 #!/bin/bash
 # Utility functions for benchmark system
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/solver_environment.sh"
 
 # Logging functions
 log_verbose() {
@@ -78,7 +79,7 @@ get_file_hash() {
 # Check if cached result is valid
 # Args: cache_key
 check_cache() {
-    [[ $ENABLE_CACHE -eq 0 ]] && return 1
+    [[ $ENABLE_CACHE -eq 0 || "${NO_CACHE:-0}" == 1 || "$1" == *"__solver_unknown" ]] && return 1
 
     local cache_key="$1"
     local cache_file="${CACHE_DIR}/${cache_key}"
@@ -90,7 +91,7 @@ check_cache() {
 # Store result in cache with file locking for thread safety
 # Args: cache_key result
 store_cache() {
-    [[ $ENABLE_CACHE -eq 0 ]] && return
+    [[ $ENABLE_CACHE -eq 0 || "${NO_CACHE:-0}" == 1 || "$1" == *"__solver_unknown" ]] && return 0
 
     local cache_key="$1"
     local result="$2"
@@ -121,6 +122,10 @@ store_cache() {
 # Args: benchmark theorem tactic file_hash
 generate_cache_key() {
     local key="$1_$2_$3_$4"
+    if solver_uses_z3 "$3"; then
+        # Direct function callers also fail closed when initialization was skipped.
+        key+="__solver_${SOLVER_CACHE_ID:-unknown}"
+    fi
     echo "$key" | sed 's/[^a-zA-Z0-9_-]/_/g'
 }
 

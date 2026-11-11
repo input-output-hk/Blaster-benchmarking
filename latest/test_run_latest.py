@@ -1,5 +1,7 @@
 """Network-free regression tests for infrastructure failure handling."""
 import csv
+import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -106,7 +108,7 @@ fetch_toolchain https://example.invalid/lean-toolchain
 
 
 class OrchestratorTests(unittest.TestCase):
-    def run_case(self, build_fail=False, partial=False, scaffold_fail=False, cache_roundtrip=False):
+    def run_case(self, build_fail=False, partial=False, scaffold_fail=False, cache_roundtrip=False, solver_roundtrip=False, no_solver=False, wrong_solver=False, legacy_cache=False):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / 'latest').mkdir()
@@ -114,6 +116,7 @@ class OrchestratorTests(unittest.TestCase):
             (root / 'bin').mkdir()
             for name in ['run_latest.sh', 'run_support.sh', 'validate_suite.py']:
                 shutil.copy(HERE / name, root / 'latest' / name)
+            shutil.copy(HERE.parent / 'benchmarks/solver_environment.sh', root / 'benchmarks')
             (root / 'source.lean').write_text('theorem a : True := by trivial\n')
             (root / 'benchmarks' / 'benchmark_config.sh').write_text(
                 'BENCHMARK_FILES=("X:source.lean:S:1:stmt")\n')
@@ -125,20 +128,53 @@ echo 'Benchmark,Theorem,Statement,auto_time,auto_status' > "$OUTPUT_DIR/S_result
                 'git': 'echo "123456789abcdef refs/heads/main"',
                 'curl': 'exit 22' if scaffold_fail else 'while [[ "$1" != "--output" ]]; do shift; done; echo leanprover/lean4:v4.31.0 > "$2"',
                 'lake': 'echo "fatal error: cstdint file not found"; exit 1' if build_fail else 'exit 0',
+                'z3': 'exit 1' if no_solver else 'echo "Z3 version 4.15.2 - 64 bit"',
                 'column': 'cat "${@: -1}"',
             }
             for name, body in commands.items():
                 path = root / 'bin' / name
                 path.write_text('#!/usr/bin/env bash\n' + body + '\n')
                 path.chmod(0o755)
+            if legacy_cache:
+                source_hash = hashlib.sha1((root / 'source.lean').read_bytes()).hexdigest()
+                key = hashlib.sha1(f'auto|123456789|leanprover/lean4:v4.31.0|auto|{source_hash}|4'.encode()).hexdigest()
+                cached = root / 'latest/results_cache/auto/S' / key
+                cached.mkdir(parents=True)
+                (cached / 'S_results.csv').write_text(
+                    'Benchmark,Theorem,Statement,auto_time,auto_status\nS,a,True,999,OK\n')
             env = dict(os.environ, PATH=str(root / 'bin') + ':' + os.environ['PATH'])
+            env.pop('BENCH_SOLVER_ID', None)
+            if wrong_solver:
+                env['BENCH_SOLVER_ID'] = 'z3-5.4.0'
             result = subprocess.run(['bash', str(root / 'latest/run_latest.sh'), 'auto'],
                                     env=env, capture_output=True, text=True)
+            if wrong_solver:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('does not match installed Z3', result.stderr)
+                return
             expected = 'SCAFFOLD_FAIL' if scaffold_fail else 'BUILD_FAIL' if build_fail else 'BENCH_FAIL' if partial else 'OK'
             self.assertEqual(result.returncode, int(build_fail or partial or scaffold_fail), result.stdout + result.stderr)
             self.assertIn('\tauto\t' + expected, (root / 'latest/results/manifest.tsv').read_text())
             caches = list((root / 'latest/results_cache').rglob('*_results.csv'))
-            self.assertEqual(len(caches), 0 if build_fail or partial or scaffold_fail else 1)
+            self.assertEqual(len(caches), 0 if build_fail or partial or scaffold_fail or no_solver else 1 + int(legacy_cache))
+            if legacy_cache:
+                self.assertIn("S,a,True,1,OK", (root / "latest/results/auto/S_results.csv").read_text())
+
+            if solver_roundtrip:
+                metadata = root / 'latest/results/auto/solver_environment.json'
+                self.assertEqual(json.loads(metadata.read_text())['solver_id'], 'z3-4.15.2')
+                for version, expected_status, force in [('4.15.2', 'CACHED', False),
+                                                         ('5.4.0', 'OK', False),
+                                                         ('5.4.0', 'CACHED', False),
+                                                         ('5.4.0', 'OK', True)]:
+                    (root / 'bin/z3').write_text('#!/usr/bin/env bash\necho "Z3 version ' + version + ' - 64 bit"\n')
+                    rerun_env = dict(env, BENCH_SOLVER_ID='z3-' + version, NO_CACHE='1' if force else '0')
+                    rerun = subprocess.run(['bash', str(root / 'latest/run_latest.sh'), 'auto'],
+                                           env=rerun_env, capture_output=True, text=True)
+                    self.assertEqual(rerun.returncode, 0, rerun.stdout + rerun.stderr)
+                    self.assertIn('\tauto\t' + expected_status, (root / 'latest/results/manifest.tsv').read_text())
+                    self.assertEqual(json.loads(metadata.read_text())['solver_id'], 'z3-' + version)
+                self.assertEqual(len(list((root / 'latest/results_cache').rglob('*_results.csv'))), 2)
 
             if cache_roundtrip:
                 for corrupt in (False, True):
@@ -149,6 +185,18 @@ echo 'Benchmark,Theorem,Statement,auto_time,auto_status' > "$OUTPUT_DIR/S_result
                     self.assertEqual(rerun.returncode, 0, rerun.stdout + rerun.stderr)
                     status = 'OK' if corrupt else 'CACHED'
                     self.assertIn('\tauto\t' + status, (root / 'latest/results/manifest.tsv').read_text())
+
+    def test_seeded_legacy_suite_cache_is_not_reused_by_z3_tool(self):
+        self.run_case(legacy_cache=True)
+
+    def test_solver_version_separates_suite_caches_and_force_reruns(self):
+        self.run_case(solver_roundtrip=True)
+
+    def test_unknown_solver_does_not_save_suite_cache(self):
+        self.run_case(no_solver=True)
+
+    def test_mismatched_solver_fails_before_benchmark(self):
+        self.run_case(wrong_solver=True)
 
     def test_valid_cache_reused_corrupt_cache_rebuilt(self):
         self.run_case(cache_roundtrip=True)
