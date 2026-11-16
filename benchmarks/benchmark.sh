@@ -140,6 +140,15 @@ main() {
     # Parse arguments
     parse_args "$@"
     
+    # Resolve solver identity before theorem cache lookups (including direct test).
+    if [[ "$COMMAND" == run ]]; then
+        for tactic in "${TACTICS[@]}"; do
+            if solver_uses_z3 "$tactic"; then init_solver_environment "$tactic" || exit 1; break; fi
+        done
+    elif [[ "$COMMAND" == test && ${#COMMAND_ARGS[@]} -ge 3 ]]; then
+        init_solver_environment "${COMMAND_ARGS[2]}" || exit 1
+    fi
+
     # Setup
     mkdir -p "$TEMP_DIR" "$OUTPUT_DIR"
     check_requirements
