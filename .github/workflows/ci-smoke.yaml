@@ -1,0 +1,71 @@
+name: Benchmark harness smoke test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      blaster_sha:
+        description: Optional full Blaster commit SHA (defaults to the committed baseline)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Test result validation
+        run: |
+          python3 scripts/ci/test_smoke.py
+          python3 scripts/ci/test_z3_build.py
+      - name: Setup Lean and Z3 master
+        run: bash scripts/ci/setup-tools.sh
+      - name: Exercise benchmark harness without cached results
+        env:
+          BLASTER_SHA: ${{ inputs.blaster_sha }}
+        run: |
+          if [[ -n "$BLASTER_SHA" ]]; then
+            python3 scripts/ci/run_smoke.py --blaster-ref "$BLASTER_SHA"
+          else
+            python3 scripts/ci/run_smoke.py
+          fi
+      - name: Record tested environment
+        if: always()
+        run: python3 scripts/ci/record_environment.py
+      - name: Upload smoke results and logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: benchmark-smoke-${{ github.run_attempt }}
+          path: .ci-results/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  workflow-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Validate workflow definitions
+        run: bash scripts/ci/lint-workflows.sh
