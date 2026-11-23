@@ -7,7 +7,7 @@ on:
       - 'cardano-dashboard/**'
       - '.github/workflows/cardano-scripts-dashboard.yml'
   push:
-    branches: [main]
+    branches: [main, codex/live-scripts-dashboard]
     paths:
       - 'LiveScripts/**'
       - 'cardano-dashboard/**'
@@ -30,16 +30,16 @@ jobs:
       - name: Build public dashboard
         run: python3 cardano-dashboard/build.py
       - name: Configure Pages
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3
         with:
           path: cardano-dashboard/dist
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     environment:
