@@ -2,6 +2,8 @@
 .tools/
 cardano-dashboard/dist/
 LiveScripts/results/*.jsonl
+LiveScripts/results/*.log
+LiveScripts/results/*.pid
 .env
 .venv/
 /src/

@@ -26,6 +26,9 @@ The model must be materialized as concrete Plutus data and independently
 replayed through the evaluator and ledger checks. On-chain examples prove
 those scripts executed in their recorded transactions; they are fixtures,
 not Blaster discoveries.
+In the V3 pilot, Blaster printed a two-field `Constr 0` for a `ScriptContext`;
+the ledger API decoder rejected it. This is a concrete model-reification gap,
+so even an apparent solver counterexample may not supply a usable context.
 
 The dashboard turns a script green only for an independently replayed,
 ledger-validated Blaster-generated invocation. That verifier is still being
@@ -43,7 +46,7 @@ preserves prior cases when the rolling window changes.
 python3 LiveScripts/import_corpus.py --corpus /path/to/recent-export --cohort YYYY-MM-DD
 python3 -m unittest discover -s LiveScripts -p 'test_*.py'
 lake build LiveScripts.S_<hash>.Script
-python3 LiveScripts/benchmark.py --cluster-first --skip-existing --workers 2 --z3 /path/to/z3 --timeout 25
+python3 LiveScripts/run_all.py --workers 4 --z3 /path/to/z3 --timeout 25
 python3 cardano-dashboard/build.py
 ```
 
@@ -56,6 +59,7 @@ the full exact-hash sweep. `--skip-existing` resumes a run for the same
 dependency and runner configuration. `results/latest.json` feeds
 candidate, timeout, unknown, and error states to the dashboard. A benchmark
 run does not automatically produce a green result or a frontier point.
+`run_all.py` performs both passes in sequence and resumes completed cases.
 
 ## Contributing
 
