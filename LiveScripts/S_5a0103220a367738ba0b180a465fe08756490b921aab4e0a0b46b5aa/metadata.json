@@ -1,0 +1,58 @@
+{
+  "cluster_id": "df4bdfe24702ae3016759ce9",
+  "examples": [
+    {
+      "block_time": 1794865224,
+      "cbor_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.json",
+      "network": "preprod",
+      "purpose": "mint",
+      "tx_hash": "f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c",
+      "tx_index": 0,
+      "valid_contract": null
+    },
+    {
+      "block_time": 1794865224,
+      "cbor_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.json",
+      "network": "preprod",
+      "purpose": "spend",
+      "tx_hash": "f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c",
+      "tx_index": 0,
+      "valid_contract": null
+    },
+    {
+      "block_time": 1794865224,
+      "cbor_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.json",
+      "network": "preprod",
+      "purpose": "spend",
+      "tx_hash": "f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c",
+      "tx_index": 1,
+      "valid_contract": null
+    },
+    {
+      "block_time": 1794865224,
+      "cbor_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c.json",
+      "network": "preprod",
+      "purpose": "spend",
+      "tx_hash": "f1f312bc87b4cee8d0f192e8d1d06bf6806677f5989ff9b7f0b2b900e689824c",
+      "tx_index": 2,
+      "valid_contract": null
+    }
+  ],
+  "first_seen": 1794865224,
+  "last_seen": 1794865224,
+  "networks": [
+    "preprod"
+  ],
+  "purposes": [
+    "mint",
+    "spend"
+  ],
+  "script_hash": "5a0103220a367738ba0b180a465fe08756490b921aab4e0a0b46b5aa",
+  "script_type": "plutusV3",
+  "serialised_size": 11469,
+  "shape_hash": "86119f50ef3d10005cbf6c61714649a8f9b333b4c294cad37be85b8741e4846d"
+}

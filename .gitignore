@@ -1,4 +1,6 @@
 /.lake
+.tools/
+cardano-dashboard/dist/
 .env
 .venv/
 /src/

@@ -1,0 +1,3 @@
+import PlutusCore.UPLC.ScriptEncoding
+
+#import_uplc script_703cb26d5a14df5724f6f7ab2f5145d8180daee31c93e365c6bf1bc7 PlutusV3 single_cbor_hex "LiveScripts/S_703cb26d5a14df5724f6f7ab2f5145d8180daee31c93e365c6bf1bc7/script.cbor.hex"

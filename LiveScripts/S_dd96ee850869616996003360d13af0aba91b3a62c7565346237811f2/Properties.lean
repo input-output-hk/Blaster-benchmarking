@@ -1,0 +1,12 @@
+import LiveScripts.Shared
+import LiveScripts.S_dd96ee850869616996003360d13af0aba91b3a62c7565346237811f2.Script
+import Blaster.Command.Syntax
+
+open PlutusCore.Data (Data)
+
+-- A falsification yields a candidate invocation. The precondition is
+-- structural only; ledger context validation and replay are required.
+#blaster (timeout: 20) (solve-result: 1)
+  [∀ ctx : Data,
+    LiveScripts.candidateContext ctx →
+      ¬ LiveScripts.succeeds script_dd96ee850869616996003360d13af0aba91b3a62c7565346237811f2.script [ctx] 10000]

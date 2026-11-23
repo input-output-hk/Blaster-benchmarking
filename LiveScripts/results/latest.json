@@ -1,0 +1,20 @@
+{
+  "186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4": {
+    "note": "Blaster returned a structural-context candidate; ledger validation is pending.",
+    "run_id": "20261123T152155Z-54721cf6",
+    "seconds": 2.986,
+    "status": "candidate"
+  },
+  "a65ca58a4e9c755fa830173d2a5caed458ac0c73f97db7faae2e7e3b": {
+    "note": "Last run: timeout after 20.033 s.",
+    "run_id": "20261123T152511Z-54721cf6",
+    "seconds": 20.033,
+    "status": "timeout"
+  },
+  "d8906ca5c7ba124a0407a32dab37b2c82b13b3dcd9111e42940dcea4": {
+    "note": "Blaster returned a structural-context candidate; ledger validation is pending.",
+    "run_id": "20261123T152421Z-54721cf6",
+    "seconds": 5.679,
+    "status": "candidate"
+  }
+}

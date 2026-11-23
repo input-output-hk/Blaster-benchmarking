@@ -7,6 +7,9 @@ package BlasterBenchmarks where
 require «Solver» from git
   "https://github.com/input-output-hk/Lean-blaster" @ "main"
 
+require PlutusCore from git
+  "https://github.com/input-output-hk/PlutusCoreBlaster.git" @ "79fce4ac2c74d376c2576edab19a9ba2e7dd5c1b"
+
 -- Tactics
 require smt from git "https://github.com/ufmg-smite/lean-smt.git" @ "main"
 require auto from git "https://github.com/leanprover-community/lean-auto.git" @ "v4.24.0-hammer"
@@ -19,3 +22,5 @@ require "leanprover-community" / mathlib @ git leanVersion
 
 @[default_target]
 lean_lib BlasterBenchmarks where
+
+lean_lib LiveScripts where

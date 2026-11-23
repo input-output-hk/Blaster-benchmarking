@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7f8">
+  <meta name="description" content="Track Blaster's search for successful Cardano script contexts across a public on-chain script corpus.">
+  <title>Cardano Scripts · Blaster</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="Cardano Scripts home"><span class="brand-mark">B</span><span>Blaster <span class="brand-divider">/</span> Cardano Scripts</span></a>
+    <nav aria-label="Main navigation"><a href="#progress">Progress</a><a href="#scripts">Scripts</a><a href="#contribute">Contribute</a></nav>
+    <a class="repo-link" href="https://github.com/input-output-hk/Blaster-benchmarking" target="_blank" rel="noopener noreferrer">Repository</a>
+  </header>
+
+  <main id="top">
+    <section class="intro wrap" aria-labelledby="intro-title">
+      <div class="intro-copy"><p class="eyebrow"><span class="live-pulse"></span> Public benchmark · on-chain Plutus</p><h1 id="intro-title">Every script is a challenge.<br><span>Every verified context moves the frontier.</span></h1><p class="intro-lead">A live view of Cardano scripts collected from mainnet and preprod, and the community effort to make Blaster find successful invocations.</p></div>
+      <div class="hero-stats" aria-label="Corpus statistics"><div><strong id="stat-scripts">—</strong><span>unique scripts</span></div><div><strong id="stat-verified">—</strong><span>Blaster verified</span></div><div><strong id="stat-families">—</strong><span>UPLC families</span></div></div>
+    </section>
+
+    <section id="progress" class="wrap panel progress-panel" aria-labelledby="progress-title">
+      <div class="section-heading"><div><p class="eyebrow">THE FRONTIER</p><h2 id="progress-title">Script discovery progress</h2><p>Chronological runs. Kept breakthroughs raise the line; other verified runs remain visible as dots. Open a point to inspect its PR and evidence.</p></div><div class="heading-actions"><label class="select-wrap">Cohort <select id="cohort-select" aria-label="Benchmark cohort"></select></label><div class="segmented" role="group" aria-label="Chart metric"><button class="active" type="button" data-metric="percent">Coverage %</button><button type="button" data-metric="count">Solved count</button></div></div></div>
+      <div class="scope-note" id="scope-note">Loading the benchmark cohort…</div>
+      <div class="chart-meta"><div class="legend"><span><i class="legend-dot discarded"></i>Other run</span><span><i class="legend-dot kept"></i>Kept breakthrough</span><span><i class="legend-line"></i>Running best</span></div><div class="chart-total" id="chart-total">—</div></div>
+      <div class="chart-box"><svg id="frontier-chart" viewBox="0 0 1200 500" role="img" aria-label="Verified script coverage over benchmark runs"></svg><div id="chart-empty" class="chart-empty" hidden><strong>The first breakthrough is open.</strong><span>Verified runs and their PRs will appear here as contributors submit them.</span></div></div>
+      <div id="run-inspector" class="run-inspector" hidden></div>
+    </section>
+
+    <section id="scripts" class="wrap scripts-section" aria-labelledby="scripts-title"><div class="section-heading"><div><p class="eyebrow">THE CORPUS</p><h2 id="scripts-title">Live script grid</h2><p>One tile per exact script hash. Shared mainnet and preprod hashes appear once; parameter variants stay distinct.</p></div><div class="grid-count" id="grid-count">—</div></div>
+      <div class="filters panel"><label class="search-field">Search hash or family<input id="search" type="search" placeholder="Script hash or family ID" autocomplete="off"></label><label>Network<select id="network"><option value="">All networks</option><option value="mainnet">Mainnet</option><option value="preprod">Preprod</option></select></label><label>Version<select id="version"><option value="">All versions</option><option value="plutusV1">Plutus V1</option><option value="plutusV2">Plutus V2</option><option value="plutusV3">Plutus V3</option></select></label><label>Status<select id="status"><option value="">All statuses</option><option value="verified">Verified</option><option value="candidate">Candidate</option><option value="timeout">Timeout</option><option value="unknown">Unknown</option><option value="unrun">Untried</option><option value="error">Error</option></select></label><label>Purpose<select id="purpose"><option value="">All purposes</option><option value="spend">Spend</option><option value="mint">Mint</option><option value="reward">Reward</option><option value="cert">Cert</option></select></label></div>
+      <div class="status-key"><span><i class="status-swatch verified"></i>Verified replay</span><span><i class="status-swatch candidate"></i>Candidate</span><span><i class="status-swatch timeout"></i>Timeout</span><span><i class="status-swatch unknown"></i>Unknown</span><span><i class="status-swatch unrun"></i>Untried</span><span><i class="status-swatch error"></i>Error</span></div>
+      <div id="script-grid" class="script-grid" aria-live="polite"></div><div class="more-row"><button id="show-more" type="button" class="outline-button" hidden>Show more scripts</button></div>
+    </section>
+
+    <section id="contribute" class="wrap contribute-section"><div class="contribute-card"><div><p class="eyebrow">COLLABORATIVE HILL CLIMBING</p><h2>Make the next jump.</h2><p>Improve context generation or Blaster, submit a PR, and compare against the same frozen script cohort. Verified gains become part of the public frontier; standout PRs are pinned on the curve.</p></div><a href="https://github.com/input-output-hk/Blaster-benchmarking/pulls" target="_blank" rel="noopener noreferrer">Explore pull requests</a></div><div class="method-note"><h3>What green means</h3><p>A Blaster-produced invocation is counted only after independent replay and the published context checks succeed. A solver model alone is a candidate. Timeout and unknown never mean a script is impossible.</p></div></section>
+  </main>
+  <dialog id="script-dialog" aria-labelledby="dialog-title"><form method="dialog"><button class="dialog-close" aria-label="Close details">×</button></form><div id="script-detail"></div></dialog>
+  <footer class="footer wrap"><span>Blaster / Cardano Scripts</span><span>Corpus from public on-chain activity · <a href="https://github.com/input-output-hk/Blaster-benchmarking" target="_blank" rel="noopener noreferrer">Source and methodology</a></span></footer>
+</body>
+</html>
