@@ -61,8 +61,11 @@ function axisLabel(value) {
 }
 function inspectRun(run, index, total) {
   const panel = $("#run-inspector");
-  const pr = run.pr_url ? `<a href="${esc(safeUrl(run.pr_url))}" target="_blank" rel="noopener noreferrer">PR #${esc(run.pr_number || "view")}</a>` : "No PR linked";
-  panel.innerHTML = `<strong>Run #${index + 1} · ${esc(run.title || "Benchmark run")}</strong><br>${esc(run.author || "Contributor")} · ${esc(run.solved_count || 0)} of ${total} scripts solved · ${esc(run.gained || 0)} gained · ${esc(run.regressed || 0)} regressed · ${pr}<br><span>${esc(run.summary || "No run note provided.")}</span>`;
+  const prs = Array.isArray(run.prs) ? run.prs :
+    (run.pr_url ? [{url: run.pr_url, number: run.pr_number}] : []);
+  const links = prs.length ? prs.map((pr) =>
+    `<a href="${esc(safeUrl(pr.url))}" target="_blank" rel="noopener noreferrer">${esc(pr.repo || "PR")} #${esc(pr.number || "view")}</a>`).join(" · ") : "No PR linked";
+  panel.innerHTML = `<strong>Run #${index + 1} · ${esc(run.title || "Benchmark run")}</strong><br>${esc(run.author || "Contributor")} · ${esc(run.solved_count || 0)} of ${total} scripts solved · ${esc(run.gained || 0)} gained · ${esc(run.regressed || 0)} regressed · ${links}<br><span>${esc(run.summary || "No run note provided.")}</span>`;
   panel.hidden = false;
 }
 function renderChart() {

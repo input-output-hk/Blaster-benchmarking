@@ -67,5 +67,8 @@ PRs can improve the context generator, symbolic execution, replay, or ledger
 checks. Run comparisons against a frozen cohort. A public frontier event
 should identify the PR, its exact verified script hashes, and the replay and
 context-validation evidence. Pinned events can annotate the progress curve.
+Events may use `prs: [{"repo": "Lean-blaster", "number": 123, "url": "..."}]`
+to link one or more upstream PRs across Lean-blaster, PlutusCoreBlaster, and
+CardanoLedgerApiBlaster. The older single `pr_url` field remains supported.
 The source dashboard is in `cardano-dashboard/` and builds to its ignored
 `dist/` directory.

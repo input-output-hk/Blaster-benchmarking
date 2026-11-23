@@ -7,3 +7,5 @@
 .status-swatch.candidate,.overview-cell.candidate{background:#7057c8}.script-tile.candidate{border-left-color:#7057c8;background:#faf8ff}.script-tile.candidate .tile-status{color:#5b43aa}
 
 .overview-scale-start,.overview-scale-end{color:#73839a;font-size:12px;font-weight:700}.overview-scale-start{margin-bottom:8px}.overview-scale-end{text-align:right;margin-top:8px}
+
+.contribute-links{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;max-width:420px;flex-shrink:0}.contribute-links a{font-size:13px;padding:10px 12px}@media(max-width:700px){.contribute-links{justify-content:flex-start;max-width:none}}
