@@ -1,0 +1,11 @@
+{
+  "cohort": "2026-11-23",
+  "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+  "packages": {
+    "Blaster": "e029d8d3d5f795f1e35d5190448f356202aac169",
+    "CardanoLedgerApi": "3dd048e3eb8619007a4bd7e2f5f9c03e18f2bf74",
+    "PlutusCore": "79fce4ac2c74d376c2576edab19a9ba2e7dd5c1b"
+  },
+  "wall_timeout": 25,
+  "z3": "Z3 version 5.4.1 - 64 bit - build hashcode 145c0c51570a357cc558ce898ce77573ba9d4fbf"
+}

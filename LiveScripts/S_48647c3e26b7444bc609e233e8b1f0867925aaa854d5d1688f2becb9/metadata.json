@@ -22,6 +22,7 @@
   ],
   "script_hash": "48647c3e26b7444bc609e233e8b1f0867925aaa854d5d1688f2becb9",
   "script_type": "plutusV3",
+  "search_purpose": "mint",
   "serialised_size": 9585,
   "shape_hash": "986cefd688e6aaf9eef65197a58ea832f686de53609a3b253d03ebe76c206820"
 }

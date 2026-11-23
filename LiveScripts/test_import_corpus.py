@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from import_corpus import arities_for, import_corpus
+from import_corpus import import_corpus, primary_purpose
 
 
 class ImportCorpusTests(unittest.TestCase):
@@ -44,15 +44,15 @@ class ImportCorpusTests(unittest.TestCase):
             self.assertEqual(record["networks"], ["mainnet", "preprod"])
             self.assertEqual(len(record["examples"]), 2)
             self.assertEqual((repo / f"LiveScripts/S_{script_hash}/script.cbor.hex").read_text(), body.hex() + "\n")
-            self.assertIn("LiveScripts.candidateContext ctx", (
+            self.assertIn("validMintingContext ctx", (
                 repo / f"LiveScripts/S_{script_hash}/Properties.lean").read_text())
             self.assertEqual(import_corpus(corpus, repo, "pilot"), result)
             cohort = json.loads((repo / "LiveScripts/cohorts/pilot.json").read_text())
             self.assertEqual(cohort["script_hashes"], [script_hash])
 
-    def test_purpose_arity(self):
-        self.assertEqual(arities_for("plutusV3", {"spend", "mint"}), [1])
-        self.assertEqual(arities_for("plutusV2", {"spend", "mint"}), [2, 3])
+    def test_primary_purpose(self):
+        self.assertEqual(primary_purpose({"spend", "mint"}), "spend")
+        self.assertEqual(primary_purpose({"reward"}), "reward")
 
 
 if __name__ == "__main__":

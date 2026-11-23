@@ -7,8 +7,14 @@ package BlasterBenchmarks where
 require «Solver» from git
   "https://github.com/input-output-hk/Lean-blaster" @ "main"
 
+require Blaster from git
+  "https://github.com/input-output-hk/Lean-blaster" @ "blaster-extension"
+
 require PlutusCore from git
-  "https://github.com/input-output-hk/PlutusCoreBlaster.git" @ "79fce4ac2c74d376c2576edab19a9ba2e7dd5c1b"
+  "https://github.com/input-output-hk/PlutusCoreBlaster.git" @ "main"
+
+require CardanoLedgerApi from git
+  "https://github.com/input-output-hk/CardanoLedgerApiBlaster.git" @ "main"
 
 -- Tactics
 require smt from git "https://github.com/ufmg-smite/lean-smt.git" @ "main"

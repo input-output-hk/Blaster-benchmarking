@@ -22,6 +22,11 @@ def build() -> dict:
     runs = json.loads(runs_path.read_text()) if runs_path.exists() else {"events": [], "results": {}}
     latest_path = REPO / "LiveScripts/results/latest.json"
     latest = json.loads(latest_path.read_text()) if latest_path.exists() else {}
+    config_path = REPO / "LiveScripts/results/active-config.json"
+    if config_path.exists():
+        active_config = json.loads(config_path.read_text())["config"]
+        latest = {key: result for key, result in latest.items()
+                  if result.get("config") == active_config}
     scripts = catalog["scripts"]
     statuses = {**latest, **runs.get("results", {})}
     public_scripts = []

@@ -43,30 +43,34 @@ def script_module(script_hash: str, script_type: str) -> str:
     )
 
 
-def property_module(script_hash: str, arities: list[int]) -> str:
-    arguments = {1: "[ctx]", 2: "[redeemer, ctx]", 3: "[datum, redeemer, ctx]"}
-    binders = (["datum"] if 3 in arities else []) + (["redeemer"] if any(a >= 2 for a in arities) else []) + ["ctx"]
-    terms = [f"LiveScripts.succeeds script_{script_hash}.script {arguments[arity]} 10000"
-             for arity in arities]
-    success = terms[0] if len(terms) == 1 else "(" + " ∨ ".join(terms) + ")"
+def primary_purpose(purposes: set[str]) -> str:
+    return next((purpose for purpose in ("spend", "mint", "reward", "cert")
+                 if purpose in purposes), "spend")
+
+
+def property_module(script_hash: str, script_type: str, purpose: str) -> str:
+    version = LANG[script_type].replace("Plutus", "")
+    name = {"spend": "Spending", "mint": "Minting", "reward": "Rewarding", "cert": "Certifying"}[purpose]
+    variable = "ctx" if version == "V3" else "input"
+    variable_type = "ScriptContext" if version == "V3" else f"{name}Input"
+    inputs = name.lower() + "Inputs"
+    valid = f"valid{name}Context"
     return (
-        "import LiveScripts.Shared\n"
+        f"import CardanoLedgerApi.{version}\n"
         f"import LiveScripts.S_{script_hash}.Script\n"
-        "import Blaster.Command.Syntax\n\n"
-        "open PlutusCore.Data (Data)\n\n"
-        "-- A falsification yields a candidate invocation. The precondition is\n"
-        "-- structural only; ledger context validation and replay are required.\n"
-        "#blaster (timeout: 20) (solve-result: 1)\n"
-        f"  [∀ {' '.join(binders)} : Data,\n"
-        "    LiveScripts.candidateContext ctx →\n"
-        f"      ¬ {success}]\n"
+        "import Blaster.Command.Syntax\n"
+        "import PlutusCore.UPLC.CekMachine\n"
+        "import PlutusCore.UPLC.Utils\n\n"
+        f"open CardanoLedgerApi.{version}\n"
+        "open PlutusCore.UPLC.CekMachine (cekExecuteProgram)\n"
+        "open PlutusCore.UPLC.Utils (isSuccessful)\n\n"
+        "-- A counterexample is a candidate until its concrete invocation is replayed.\n"
+        f"-- Search purpose: {purpose}; CEK fuel: 1000; SMT limit: 10 seconds.\n"
+        "#blaster (timeout: 10) (verbose: 1) (solve-result: 1)\n"
+        f"  [∀ {variable} : {variable_type},\n"
+        f"    {valid} {variable} →\n"
+        f"      ¬ isSuccessful (cekExecuteProgram script_{script_hash}.script ({inputs} {variable}) 1000)]\n"
     )
-
-
-def arities_for(script_type: str, purposes: set[str]) -> list[int]:
-    if script_type == "plutusV3":
-        return [1]
-    return sorted({3 if purpose == "spend" else 2 for purpose in purposes}) or [2, 3]
 
 
 def load_export(corpus: Path) -> tuple[dict[str, dict], dict[str, bytes]]:
@@ -161,11 +165,12 @@ def import_corpus(corpus: Path, repo: Path, cohort_name: str | None) -> dict:
                     seen.add(key)
             fresh["examples"].sort(key=lambda e: (e["network"], e["tx_hash"], e["purpose"], e.get("tx_index") or 0))
         records[script_hash] = fresh
+        fresh["search_purpose"] = primary_purpose(set(fresh["purposes"]))
         case = scripts_root / f"S_{script_hash}"
         write_if_changed(case / "script.cbor.hex", bodies[script_hash].hex() + "\n")
         write_if_changed(case / "Script.lean", script_module(script_hash, fresh["script_type"]))
         write_if_changed(case / "Properties.lean", property_module(
-            script_hash, arities_for(fresh["script_type"], set(fresh["purposes"]))))
+            script_hash, fresh["script_type"], fresh["search_purpose"]))
         write_if_changed(case / "metadata.json", json_text(fresh))
 
     # Transaction fixtures are content-addressed and shared by script cases.

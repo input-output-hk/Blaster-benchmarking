@@ -1,6 +1,7 @@
 /.lake
 .tools/
 cardano-dashboard/dist/
+LiveScripts/results/*.jsonl
 .env
 .venv/
 /src/

@@ -22,6 +22,7 @@
   ],
   "script_hash": "ee2726691d6060ef43878db247b14984bd0fce21d7992af2dc4d98ce",
   "script_type": "plutusV3",
+  "search_purpose": "cert",
   "serialised_size": 1784,
   "shape_hash": "4142ad734f88cb93590af07d08e29f63c0962b448ef70763300d7174f55f88f9"
 }

@@ -16,13 +16,16 @@ own directories and share a structural `cluster_id` only for exploration.
 
 ## Property and score
 
-The Lean property searches for a successful CEK execution using a structurally
-shaped context. `candidateContext` currently checks only a `Constr 0` value
-with two or more fields. It **does not** check the complete version-specific
-Cardano ledger `ScriptContext` encoding or transaction consistency.
-`#blaster` falsification therefore produces a **candidate**, never a verified
-script context on its own. On-chain examples prove those scripts executed in
-their recorded transactions; they are fixtures, not Blaster discoveries.
+The Lean property asks Blaster for a successful CEK execution under the
+version-specific `CardanoLedgerApi` validity predicate for one observed
+script purpose. It uses CEK fuel 1000 and a 10-second SMT limit. Scripts
+observed at several purposes currently search the first of spending, minting,
+rewarding, or certifying; `search_purpose` records the selection in metadata.
+Falsification produces a **candidate** model, not a verified script context.
+The model must be materialized as concrete Plutus data and independently
+replayed through the evaluator and ledger checks. On-chain examples prove
+those scripts executed in their recorded transactions; they are fixtures,
+not Blaster discoveries.
 
 The dashboard turns a script green only for an independently replayed,
 ledger-validated Blaster-generated invocation. That verifier is still being
@@ -40,12 +43,17 @@ preserves prior cases when the rolling window changes.
 python3 LiveScripts/import_corpus.py --corpus /path/to/recent-export --cohort YYYY-MM-DD
 python3 -m unittest discover -s LiveScripts -p 'test_*.py'
 lake build LiveScripts.S_<hash>.Script
-python3 LiveScripts/benchmark.py --script <hash> --z3 /path/to/z3 --timeout 90
+python3 LiveScripts/benchmark.py --cluster-first --skip-existing --workers 2 --z3 /path/to/z3 --timeout 25
 python3 cardano-dashboard/build.py
 ```
 
-The search runner requires Z3 5.4 or newer. It limits each Lean process by
-wall time and writes raw results under `results/`. `results/latest.json` feeds
+The search runner requires Z3 5.4 or newer. The 10-second Blaster setting
+limits only SMT solving; the runner also kills the whole Lean process group
+after 25 wall-clock seconds, including elaboration and optimization. It writes
+raw results under `results/` and classifies which stage timed out.
+`--cluster-first` tries the smallest member of each structural family before
+the full exact-hash sweep. `--skip-existing` resumes a run for the same
+dependency and runner configuration. `results/latest.json` feeds
 candidate, timeout, unknown, and error states to the dashboard. A benchmark
 run does not automatically produce a green result or a frontier point.
 

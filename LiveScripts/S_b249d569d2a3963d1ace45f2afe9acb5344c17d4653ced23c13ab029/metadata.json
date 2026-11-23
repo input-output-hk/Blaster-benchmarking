@@ -32,6 +32,7 @@
   ],
   "script_hash": "b249d569d2a3963d1ace45f2afe9acb5344c17d4653ced23c13ab029",
   "script_type": "plutusV1",
+  "search_purpose": "spend",
   "serialised_size": 5989,
   "shape_hash": "9cd925710773b99c08df05dfec330e1f90ae034137f5bbf1762d0e1e5f92bffa"
 }

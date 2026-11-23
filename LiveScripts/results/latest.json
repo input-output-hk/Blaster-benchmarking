@@ -1,20 +1,170 @@
 {
-  "186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4": {
-    "note": "Blaster returned a structural-context candidate; ledger validation is pending.",
-    "run_id": "20261123T152155Z-54721cf6",
-    "seconds": 2.986,
-    "status": "candidate"
+  "0060465385b600f047aec859d953d0a05a72e81573ccb5d33552c264": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.042 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.042,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
   },
-  "a65ca58a4e9c755fa830173d2a5caed458ac0c73f97db7faae2e7e3b": {
-    "note": "Last run: timeout after 20.033 s.",
-    "run_id": "20261123T152511Z-54721cf6",
-    "seconds": 20.033,
-    "status": "timeout"
+  "186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 12.729,
+    "status": "candidate",
+    "timeout_stage": null
+  },
+  "2b6a490b7ea8d0b6d74819f42c5f540f9cc5c76c712424509dce8a26": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.052 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.052,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "303cc9b1fb57b69530de8f0995e2f23f4c41018cd4168ab53e6bf118": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 15.281,
+    "status": "candidate",
+    "timeout_stage": null
+  },
+  "3d9d76c894b7e33373c668b2a10dea82fb5fa7cc63164d9505eea234": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.05 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.05,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "4b0caac56bd9b68c5e3806ab673627d16b568d1476743cca5fd3f39f": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.039 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.039,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "4f59b412e8918dfa481e57e859b259e8007fa9675cf5f154691faef3": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.038 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.038,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "524565ac8f732fc8814ab2715e48df16ac1e557b9d93a839706563cb": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.041 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.041,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "52cf8abe73d9dbbd82a2f28f943a32ce8b63493efe5ad604ffe65f45": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 20.39,
+    "status": "candidate",
+    "timeout_stage": null
+  },
+  "673f2bfaa44efb5e9ae881606e32f94dfbee5ccd1c8ca4f9c44365de": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 22.374,
+    "status": "candidate",
+    "timeout_stage": null
+  },
+  "78bbd2b4a99afc6500df8c9f38300001835bf2bc7211ecb1dffecfea": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.037 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.037,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "929e32e92e08e486e2cea633346590fbba0037d9dc082eb4477e6253": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 15.143,
+    "status": "candidate",
+    "timeout_stage": null
+  },
+  "93d515d8f200856d312b9d571646e67e7ec0fc67d058b66e745c0aa2": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.041 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.041,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "c0e65618da9d3d39d20d0f7cdefc6481aebe616fe063a447d8647c90": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.039 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.039,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "c4f37d2bc1a955cfdc33597b3c089179ebeffdc624bbcf05b33950ef": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.042 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.042,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "d27ccc13fab5b782984a3d1f99353197ca1a81be069941ffc003ee75": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 18.024,
+    "status": "candidate",
+    "timeout_stage": null
+  },
+  "d2dbff622e509dda256fedbd31ef6e9fd98ed49ad91d5c0e07f68af1": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.041 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 25.041,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "d5febb2757fcf9d2e8b3bf656f9d1f784b6bcebbd31b3d688383e4ac": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: error after 20.206 s.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 20.206,
+    "status": "error",
+    "timeout_stage": null
   },
   "d8906ca5c7ba124a0407a32dab37b2c82b13b3dcd9111e42940dcea4": {
-    "note": "Blaster returned a structural-context candidate; ledger validation is pending.",
-    "run_id": "20261123T152421Z-54721cf6",
-    "seconds": 5.679,
-    "status": "candidate"
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 11.988,
+    "status": "candidate",
+    "timeout_stage": null
+  },
+  "def68337867cb4f1f95b6b811fedbfcdd7780d10a95cc072077088ea": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Last run: timeout during elaboration after 25.052 s.",
+    "run_id": "20261123T155622670850Z-c2456d09",
+    "seconds": 25.052,
+    "status": "timeout",
+    "timeout_stage": "elaboration"
+  },
+  "f0bdb73a9fe70b6c0781b7a7466274dce6d78c7bd3e8fcb4244935e2": {
+    "config": "dcf7defb6885dec84482f4022d9a7c0fd833fc9dbbc143ea40b9525a68afc5a4",
+    "note": "Blaster returned a CardanoLedgerApi-valid context candidate; independent replay is pending.",
+    "run_id": "20261123T155835845289Z-c2456d09",
+    "seconds": 18.302,
+    "status": "candidate",
+    "timeout_stage": null
   }
 }

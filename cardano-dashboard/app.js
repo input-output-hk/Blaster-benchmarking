@@ -133,9 +133,29 @@ function filteredScripts() {
     (!filters.purpose || script.purposes.includes(filters.purpose))
   ).sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0) || a.script_hash.localeCompare(b.script_hash));
 }
+function renderOverview(entries) {
+  const grid = $("#overview-grid");
+  const ordered = [...entries].sort((a, b) =>
+    Number(a.serialised_size) - Number(b.serialised_size) || a.script_hash.localeCompare(b.script_hash));
+  const fragment = document.createDocumentFragment();
+  ordered.forEach((script, index) => {
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = `overview-cell ${script.status}`;
+    cell.tabIndex = index === 0 ? 0 : -1;
+    cell.title = `${script.script_hash} · ${Number(script.serialised_size).toLocaleString()} bytes · ${script.status}`;
+    cell.setAttribute("role", "gridcell");
+    cell.setAttribute("aria-label", cell.title);
+    cell.addEventListener("click", () => openScript(script));
+    fragment.append(cell);
+  });
+  grid.replaceChildren(fragment);
+  $("#overview-count").textContent = `${ordered.length.toLocaleString()} shown`;
+}
 function renderGrid() {
   const entries = filteredScripts();
   $("#grid-count").textContent = `${entries.length.toLocaleString()} scripts`;
+  renderOverview(entries);
   const grid = $("#script-grid"); grid.replaceChildren();
   entries.slice(0, shown).forEach((script) => {
     const button = document.createElement("button");
@@ -161,6 +181,20 @@ function setupFilters() {
     });
   });
   $("#show-more").addEventListener("click", () => { shown += 120; renderGrid(); });
+  $("#overview-grid").addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    const cells = [...$("#overview-grid").children];
+    const index = cells.indexOf(document.activeElement);
+    if (index < 0) return;
+    const columns = getComputedStyle($("#overview-grid")).gridTemplateColumns.split(" ").length;
+    const step = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns}[event.key];
+    const next = Math.min(cells.length - 1, Math.max(0, index + step));
+    if (next === index) return;
+    cells[index].tabIndex = -1;
+    cells[next].tabIndex = 0;
+    cells[next].focus();
+    event.preventDefault();
+  });
   $("#script-dialog").addEventListener("click", (event) => { if (event.target === $("#script-dialog")) $("#script-dialog").close(); });
 }
 async function start() {

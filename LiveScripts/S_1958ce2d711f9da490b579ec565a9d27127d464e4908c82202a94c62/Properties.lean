@@ -1,12 +1,16 @@
-import LiveScripts.Shared
+import CardanoLedgerApi.V1
 import LiveScripts.S_1958ce2d711f9da490b579ec565a9d27127d464e4908c82202a94c62.Script
 import Blaster.Command.Syntax
+import PlutusCore.UPLC.CekMachine
+import PlutusCore.UPLC.Utils
 
-open PlutusCore.Data (Data)
+open CardanoLedgerApi.V1
+open PlutusCore.UPLC.CekMachine (cekExecuteProgram)
+open PlutusCore.UPLC.Utils (isSuccessful)
 
--- A falsification yields a candidate invocation. The precondition is
--- structural only; ledger context validation and replay are required.
-#blaster (timeout: 20) (solve-result: 1)
-  [∀ datum redeemer ctx : Data,
-    LiveScripts.candidateContext ctx →
-      ¬ LiveScripts.succeeds script_1958ce2d711f9da490b579ec565a9d27127d464e4908c82202a94c62.script [datum, redeemer, ctx] 10000]
+-- A counterexample is a candidate until its concrete invocation is replayed.
+-- Search purpose: spend; CEK fuel: 1000; SMT limit: 10 seconds.
+#blaster (timeout: 10) (verbose: 1) (solve-result: 1)
+  [∀ input : SpendingInput,
+    validSpendingContext input →
+      ¬ isSuccessful (cekExecuteProgram script_1958ce2d711f9da490b579ec565a9d27127d464e4908c82202a94c62.script (spendingInputs input) 1000)]
