@@ -1,0 +1,38 @@
+{
+  "cluster_id": "6f1e7c35463fb8699ef08402",
+  "examples": [
+    {
+      "block_time": 1795399718,
+      "cbor_path": "LiveScripts/fixtures/mainnet/598978d183404d2f07ee79579d24eba8e27dd1c4be6ddcb66bfdbc03b39d0924.cbor",
+      "context_path": "LiveScripts/fixtures/mainnet/598978d183404d2f07ee79579d24eba8e27dd1c4be6ddcb66bfdbc03b39d0924.json",
+      "network": "mainnet",
+      "purpose": "reward",
+      "tx_hash": "598978d183404d2f07ee79579d24eba8e27dd1c4be6ddcb66bfdbc03b39d0924",
+      "tx_index": 0,
+      "valid_contract": true
+    },
+    {
+      "block_time": 1795398509,
+      "cbor_path": "LiveScripts/fixtures/mainnet/e255210fd491747ff6960aeb439a3045d3bd2aaff9267d0515cb58cc6e49862b.cbor",
+      "context_path": "LiveScripts/fixtures/mainnet/e255210fd491747ff6960aeb439a3045d3bd2aaff9267d0515cb58cc6e49862b.json",
+      "network": "mainnet",
+      "purpose": "reward",
+      "tx_hash": "e255210fd491747ff6960aeb439a3045d3bd2aaff9267d0515cb58cc6e49862b",
+      "tx_index": 0,
+      "valid_contract": true
+    }
+  ],
+  "first_seen": 1795398509,
+  "last_seen": 1795399718,
+  "networks": [
+    "mainnet"
+  ],
+  "purposes": [
+    "reward"
+  ],
+  "script_hash": "0091aad5d3ded01e6c52d6b3b43c02af72104d38d78c72bd280d3190",
+  "script_type": "plutusV3",
+  "search_purpose": "reward",
+  "serialised_size": 1863,
+  "shape_hash": "a7d40c40f73c61a6a2293c463636126b69dd39e316ebed1ff10654aba8eda173"
+}

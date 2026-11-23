@@ -1,0 +1,59 @@
+{
+  "cluster_id": "2c5189cb7a874331ce836348",
+  "examples": [
+    {
+      "block_time": 1795002702,
+      "cbor_path": "LiveScripts/fixtures/mainnet/60adb1890880a0727c36cb935d4c1f6e837eab678e72fe576c429985062871a8.cbor",
+      "context_path": "LiveScripts/fixtures/mainnet/60adb1890880a0727c36cb935d4c1f6e837eab678e72fe576c429985062871a8.json",
+      "network": "mainnet",
+      "purpose": "mint",
+      "tx_hash": "60adb1890880a0727c36cb935d4c1f6e837eab678e72fe576c429985062871a8",
+      "tx_index": 0,
+      "valid_contract": true
+    },
+    {
+      "block_time": 1795002702,
+      "cbor_path": "LiveScripts/fixtures/mainnet/60adb1890880a0727c36cb935d4c1f6e837eab678e72fe576c429985062871a8.cbor",
+      "context_path": "LiveScripts/fixtures/mainnet/60adb1890880a0727c36cb935d4c1f6e837eab678e72fe576c429985062871a8.json",
+      "network": "mainnet",
+      "purpose": "reward",
+      "tx_hash": "60adb1890880a0727c36cb935d4c1f6e837eab678e72fe576c429985062871a8",
+      "tx_index": 0,
+      "valid_contract": true
+    },
+    {
+      "block_time": 1795002002,
+      "cbor_path": "LiveScripts/fixtures/mainnet/eb73dc8defecfd90b7a5733b139eaf9b2b12e7664ff3491b8da2d863109a7559.cbor",
+      "context_path": "LiveScripts/fixtures/mainnet/eb73dc8defecfd90b7a5733b139eaf9b2b12e7664ff3491b8da2d863109a7559.json",
+      "network": "mainnet",
+      "purpose": "mint",
+      "tx_hash": "eb73dc8defecfd90b7a5733b139eaf9b2b12e7664ff3491b8da2d863109a7559",
+      "tx_index": 0,
+      "valid_contract": true
+    },
+    {
+      "block_time": 1795002002,
+      "cbor_path": "LiveScripts/fixtures/mainnet/eb73dc8defecfd90b7a5733b139eaf9b2b12e7664ff3491b8da2d863109a7559.cbor",
+      "context_path": "LiveScripts/fixtures/mainnet/eb73dc8defecfd90b7a5733b139eaf9b2b12e7664ff3491b8da2d863109a7559.json",
+      "network": "mainnet",
+      "purpose": "reward",
+      "tx_hash": "eb73dc8defecfd90b7a5733b139eaf9b2b12e7664ff3491b8da2d863109a7559",
+      "tx_index": 0,
+      "valid_contract": true
+    }
+  ],
+  "first_seen": 1795002002,
+  "last_seen": 1795002702,
+  "networks": [
+    "mainnet"
+  ],
+  "purposes": [
+    "mint",
+    "reward"
+  ],
+  "script_hash": "befbcb19919ff8ce5323d123c835da8e7653a098ad482271a72b72f2",
+  "script_type": "plutusV3",
+  "search_purpose": "mint",
+  "serialised_size": 8297,
+  "shape_hash": "5368be93927fc7ac7728f30e01f3220a335a3864493e1d4d0f9f459472fd1cec"
+}

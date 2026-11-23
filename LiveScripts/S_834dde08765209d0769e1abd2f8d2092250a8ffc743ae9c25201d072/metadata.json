@@ -1,0 +1,28 @@
+{
+  "cluster_id": "74f5a16f59386827dccc3ac5",
+  "examples": [
+    {
+      "block_time": 1795437084,
+      "cbor_path": "LiveScripts/fixtures/preprod/26117d2c5c3b900333c5cb5b183eee4c748618d289d4b03337bccca154e9cc23.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/26117d2c5c3b900333c5cb5b183eee4c748618d289d4b03337bccca154e9cc23.json",
+      "network": "preprod",
+      "purpose": "mint",
+      "tx_hash": "26117d2c5c3b900333c5cb5b183eee4c748618d289d4b03337bccca154e9cc23",
+      "tx_index": 1,
+      "valid_contract": true
+    }
+  ],
+  "first_seen": 1795437084,
+  "last_seen": 1795437084,
+  "networks": [
+    "preprod"
+  ],
+  "purposes": [
+    "mint"
+  ],
+  "script_hash": "834dde08765209d0769e1abd2f8d2092250a8ffc743ae9c25201d072",
+  "script_type": "plutusV3",
+  "search_purpose": "mint",
+  "serialised_size": 6318,
+  "shape_hash": "383637176629eba5c52dbb5e7c0a0086d7afb06857d599bcec05fbbdc03fe30f"
+}

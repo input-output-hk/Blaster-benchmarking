@@ -1,0 +1,16 @@
+import CardanoLedgerApi.V3
+import LiveScripts.S_da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e.Script
+import Blaster.Command.Syntax
+import PlutusCore.UPLC.CekMachine
+import PlutusCore.UPLC.Utils
+
+open CardanoLedgerApi.V3
+open PlutusCore.UPLC.CekMachine (cekExecuteProgram)
+open PlutusCore.UPLC.Utils (isSuccessful)
+
+-- A counterexample is a candidate until its concrete invocation is replayed.
+-- Search purpose: spend; CEK fuel: 1000; SMT limit: 10 seconds.
+#blaster (timeout: 10) (verbose: 1) (solve-result: 1)
+  [∀ ctx : ScriptContext,
+    validSpendingContext ctx →
+      ¬ isSuccessful (cekExecuteProgram script_da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e.script (spendingInputs ctx) 1000)]

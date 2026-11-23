@@ -1,0 +1,58 @@
+{
+  "cluster_id": "d069454eab0f4885a4cd1148",
+  "examples": [
+    {
+      "block_time": 1795436425,
+      "cbor_path": "LiveScripts/fixtures/preprod/122fbe625f80e967747475a49489ae16eb75499e34329d139e6b1226311b47e0.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/122fbe625f80e967747475a49489ae16eb75499e34329d139e6b1226311b47e0.json",
+      "network": "preprod",
+      "purpose": "spend",
+      "tx_hash": "122fbe625f80e967747475a49489ae16eb75499e34329d139e6b1226311b47e0",
+      "tx_index": 0,
+      "valid_contract": true
+    },
+    {
+      "block_time": 1795436425,
+      "cbor_path": "LiveScripts/fixtures/preprod/122fbe625f80e967747475a49489ae16eb75499e34329d139e6b1226311b47e0.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/122fbe625f80e967747475a49489ae16eb75499e34329d139e6b1226311b47e0.json",
+      "network": "preprod",
+      "purpose": "spend",
+      "tx_hash": "122fbe625f80e967747475a49489ae16eb75499e34329d139e6b1226311b47e0",
+      "tx_index": 1,
+      "valid_contract": true
+    },
+    {
+      "block_time": 1795437044,
+      "cbor_path": "LiveScripts/fixtures/preprod/656842985d66089c1e71b3e0925f4f505ad4c8e93d595d5d7e7fa830b1b7a65f.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/656842985d66089c1e71b3e0925f4f505ad4c8e93d595d5d7e7fa830b1b7a65f.json",
+      "network": "preprod",
+      "purpose": "spend",
+      "tx_hash": "656842985d66089c1e71b3e0925f4f505ad4c8e93d595d5d7e7fa830b1b7a65f",
+      "tx_index": 0,
+      "valid_contract": true
+    },
+    {
+      "block_time": 1795437044,
+      "cbor_path": "LiveScripts/fixtures/preprod/656842985d66089c1e71b3e0925f4f505ad4c8e93d595d5d7e7fa830b1b7a65f.cbor",
+      "context_path": "LiveScripts/fixtures/preprod/656842985d66089c1e71b3e0925f4f505ad4c8e93d595d5d7e7fa830b1b7a65f.json",
+      "network": "preprod",
+      "purpose": "spend",
+      "tx_hash": "656842985d66089c1e71b3e0925f4f505ad4c8e93d595d5d7e7fa830b1b7a65f",
+      "tx_index": 1,
+      "valid_contract": true
+    }
+  ],
+  "first_seen": 1795436425,
+  "last_seen": 1795437044,
+  "networks": [
+    "preprod"
+  ],
+  "purposes": [
+    "spend"
+  ],
+  "script_hash": "177a07459543f847b048dc8f0961390fab656129a4f45ff60ffcf310",
+  "script_type": "plutusV3",
+  "search_purpose": "spend",
+  "serialised_size": 248,
+  "shape_hash": "4a62e5a3e01815a086d972728ee946c6941ef76ee479227465b6b098817f3729"
+}
